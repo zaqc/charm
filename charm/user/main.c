@@ -100,7 +100,7 @@ void EXINT0_IRQHandler(void)
   button_isr();
 }
 
-uint16_t spi_tx_buf[256];
+int16_t spi_tx_buf[4096];	// 4096
 
 void test_spi(void) {
 	gpio_init_type gpio_param;
@@ -138,7 +138,7 @@ void test_spi(void) {
 	dma_init_type dma_param;
 	dma_default_para_init(&dma_param);
 	dma_param.direction = DMA_DIR_MEMORY_TO_PERIPHERAL; // Transfer memory buffer to SPI2_TX
-	dma_param.buffer_size = 16;
+	dma_param.buffer_size = 1024;
 	dma_param.memory_data_width = DMA_MEMORY_DATA_WIDTH_HALFWORD;	// 16 bit
 	dma_param.memory_inc_enable = TRUE;
 	dma_param.peripheral_data_width = DMA_PERIPHERAL_DATA_WIDTH_HALFWORD;
@@ -181,7 +181,7 @@ void test_adc(void) {
 	gpio_default_para_init(&gpio_param);
 	gpio_param.gpio_pins = GPIO_PINS_ALL;
 	gpio_param.gpio_mode = GPIO_MODE_INPUT;
-	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_out_type = GPIO_OUTPUT_OPEN_DRAIN;
 	gpio_param.gpio_pull = GPIO_PULL_NONE;
 	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
 	gpio_init(GPIOF, &gpio_param);
@@ -196,7 +196,7 @@ void test_adc(void) {
 	gpio_pin_mux_config(GPIOB, GPIO_PINS_SOURCE6, GPIO_MUX_2);
 
 	crm_periph_clock_enable(CRM_TMR4_PERIPH_CLOCK, TRUE);
-	tmr_base_init(TMR4, 12, 0);
+	tmr_base_init(TMR4, 9, 0);
 	tmr_cnt_dir_set(TMR4, TMR_COUNT_UP);
 
 	/* channel 3 configuration in output mode */
@@ -211,38 +211,393 @@ void test_adc(void) {
 	tmr_param.occ_idle_state = TRUE;
 	/* channel 3 */
 	tmr_output_channel_config(TMR4, TMR_SELECT_CHANNEL_1, &tmr_param);
-	tmr_channel_value_set(TMR4, TMR_SELECT_CHANNEL_1, 6);	// set pulse width
+	tmr_channel_value_set(TMR4, TMR_SELECT_CHANNEL_1, 7);	// set pulse width
+
+	crm_periph_clock_enable(CRM_DMA1_PERIPH_CLOCK, TRUE);
+	dma_reset(DMA1_CHANNEL2);
+	dma_init_type dma_param;
+	dma_param.buffer_size = 1024;
+	dma_param.direction = DMA_DIR_PERIPHERAL_TO_MEMORY;
+	dma_param.memory_base_addr = (uint32_t) spi_tx_buf;
+	dma_param.memory_data_width = DMA_MEMORY_DATA_WIDTH_HALFWORD;
+	dma_param.memory_inc_enable = TRUE;
+	dma_param.peripheral_base_addr = (uint32_t)&GPIOF->idt;
+	dma_param.peripheral_data_width = DMA_PERIPHERAL_DATA_WIDTH_HALFWORD;
+	dma_param.peripheral_inc_enable = FALSE;
+	dma_param.priority = DMA_PRIORITY_VERY_HIGH;
+	dma_param.loop_mode_enable = FALSE;
+	dma_init(DMA1_CHANNEL2, &dma_param);
+
+	dmamux_enable(DMA1, TRUE);
+	dmamux_init(DMA1MUX_CHANNEL2, DMAMUX_DMAREQ_ID_TMR4_CH1);
+	dma_channel_enable(DMA1_CHANNEL2, TRUE);
 
 	/* enable tmr1 overflow dma request */
-	//tmr_dma_request_enable(TMR1, TMR_OVERFLOW_DMA_REQUEST, TRUE);
+	tmr_dma_request_enable(TMR4, TMR_C1_DMA_REQUEST, TRUE);
 
 	/* tmr1 output enable */
 	tmr_output_enable(TMR4, TRUE);
 	/* enable tmr1 */
 	tmr_counter_enable(TMR4, TRUE);
 
+	while(dma_flag_get(DMA1_FDT2_FLAG) == RESET);
+
+	//tmr_counter_enable(TMR4, FALSE);
+
+	for (int i = 0; i < 1024; i++)
+		spi_tx_buf[i] =  512 - (0x3FF & spi_tx_buf[i]);
+
+	delay_us(10);
 }
+
+uint16_t dac_tx_buf[1024];	// 4096
+
+void test_dac(void) {
+	crm_periph_clock_enable(CRM_GPIOD_PERIPH_CLOCK, TRUE);
+	gpio_init_type gpio_param;
+	gpio_default_para_init(&gpio_param);
+	/* spi2 cs pin */
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_mode = GPIO_MODE_MUX;
+	gpio_param.gpio_pull = GPIO_PULL_UP;
+	gpio_param.gpio_pins = GPIO_PINS_0;
+	gpio_init(GPIOD, &gpio_param);
+	gpio_pin_mux_config(GPIOD, GPIO_PINS_SOURCE0, GPIO_MUX_7);
+	/* spi2 sck pin */
+	gpio_param.gpio_pull = GPIO_PULL_DOWN;
+	gpio_param.gpio_pins = GPIO_PINS_1;
+	gpio_init(GPIOD, &gpio_param);
+	gpio_pin_mux_config(GPIOD, GPIO_PINS_SOURCE1, GPIO_MUX_6);
+	/* spi2 mosi pin */
+	gpio_param.gpio_pull = GPIO_PULL_UP;
+	gpio_param.gpio_pins = GPIO_PINS_4;
+	gpio_init(GPIOD, &gpio_param);
+	gpio_pin_mux_config(GPIOD, GPIO_PINS_SOURCE4, GPIO_MUX_6);
+
+	/* DAC GPIO CS */
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_mode = GPIO_MODE_OUTPUT;
+	gpio_param.gpio_pins = GPIO_PINS_3;
+	gpio_param.gpio_pull = GPIO_PULL_UP;
+	gpio_init(GPIOD, &gpio_param);
+	//gpio_pin_mux_config(GPIOD, GPIO_PINS_SOURCE3, GPIO_MUX_0);
+
+	crm_periph_clock_enable(CRM_DMA1_PERIPH_CLOCK, TRUE);
+	dma_reset(DMA1_CHANNEL3);
+	dmamux_enable(DMA1, TRUE);
+	dmamux_init(DMA1MUX_CHANNEL3, DMAMUX_DMAREQ_ID_SPI2_TX);
+	dma_init_type dma_param;
+	dma_default_para_init(&dma_param);
+	dma_param.direction = DMA_DIR_MEMORY_TO_PERIPHERAL; // Transfer memory buffer to SPI2_TX
+	dma_param.buffer_size = 256;
+	dma_param.memory_data_width = DMA_MEMORY_DATA_WIDTH_HALFWORD;	// 16 bit
+	dma_param.memory_inc_enable = TRUE;
+	dma_param.peripheral_data_width = DMA_PERIPHERAL_DATA_WIDTH_HALFWORD;
+	dma_param.peripheral_inc_enable = FALSE;
+	dma_param.priority = DMA_PRIORITY_MEDIUM;
+	dma_param.loop_mode_enable = FALSE;
+	dma_param.memory_base_addr = (uint32_t)dac_tx_buf;
+	dma_param.peripheral_base_addr = (uint32_t)&(SPI2->dt);
+	dma_init(DMA1_CHANNEL3, &dma_param);
+
+	crm_periph_clock_enable(CRM_SPI2_PERIPH_CLOCK, TRUE);
+	spi_init_type spi_param;
+	spi_default_para_init(&spi_param);
+	spi_param.transmission_mode = SPI_TRANSMIT_HALF_DUPLEX_TX;
+	spi_param.master_slave_mode = SPI_MODE_MASTER;
+	spi_param.mclk_freq_division = SPI_MCLK_DIV_16;
+	spi_param.first_bit_transmission = SPI_FIRST_BIT_MSB;
+	spi_param.frame_bit_num = SPI_FRAME_16BIT;
+	spi_param.clock_polarity = SPI_CLOCK_POLARITY_HIGH;
+	spi_param.clock_phase = SPI_CLOCK_PHASE_1EDGE;
+	spi_param.cs_mode_selection = SPI_CS_HARDWARE_MODE;
+	spi_init(SPI2, &spi_param);
+	spi_ti_mode_enable(SPI2, TRUE);
+	spi_hardware_cs_output_enable(SPI2, TRUE);
+	spi_i2s_dma_transmitter_enable(SPI2, TRUE);
+	spi_enable(SPI2, TRUE);
+
+	GPIOD->clr = GPIO_PINS_3;
+	dma_channel_enable(DMA1_CHANNEL3, TRUE);
+
+	while(dma_flag_get(DMA1_FDT3_FLAG) == RESET);
+	GPIOD->scr = GPIO_PINS_3;
+
+	delay_us(10000);
+
+}
+
+void test_dac_swcs(void) {
+	crm_periph_clock_enable(CRM_GPIOA_PERIPH_CLOCK, TRUE);
+	crm_periph_clock_enable(CRM_GPIOB_PERIPH_CLOCK, TRUE);
+	crm_periph_clock_enable(CRM_GPIOD_PERIPH_CLOCK, TRUE);
+	gpio_init_type gpio_param;
+	gpio_default_para_init(&gpio_param);
+	/* spi2 cs pin */
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_mode = GPIO_MODE_MUX;
+	gpio_param.gpio_pull = GPIO_PULL_DOWN;
+	gpio_param.gpio_pins = GPIO_PINS_9;
+	//gpio_init(GPIOB, &gpio_param);
+	//gpio_pin_mux_config(GPIOA, GPIO_PINS_SOURCE9, GPIO_MUX_5);
+
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_mode = GPIO_MODE_MUX;
+	gpio_param.gpio_pull = GPIO_PULL_NONE;
+	gpio_param.gpio_pins = GPIO_PINS_0;
+	gpio_init(GPIOD, &gpio_param);
+	gpio_pin_mux_config(GPIOD, GPIO_PINS_SOURCE0, GPIO_MUX_7);
+
+	/* spi2 sck pin */
+	gpio_param.gpio_pull = GPIO_PULL_UP;
+	gpio_param.gpio_pins = GPIO_PINS_1;
+	gpio_init(GPIOD, &gpio_param);
+	gpio_pin_mux_config(GPIOD, GPIO_PINS_SOURCE1, GPIO_MUX_6);
+	/* spi2 mosi pin */
+	gpio_param.gpio_pull = GPIO_PULL_UP;
+	gpio_param.gpio_pins = GPIO_PINS_4;
+	gpio_init(GPIOD, &gpio_param);
+	gpio_pin_mux_config(GPIOD, GPIO_PINS_SOURCE4, GPIO_MUX_6);
+
+	/* DAC GPIO CS */
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_mode = GPIO_MODE_OUTPUT;
+	gpio_param.gpio_pins = GPIO_PINS_3;
+	gpio_param.gpio_pull = GPIO_PULL_DOWN;
+	gpio_init(GPIOD, &gpio_param);
+	//gpio_pin_mux_config(GPIOD, GPIO_PINS_SOURCE3, GPIO_MUX_0);
+
+//	crm_periph_clock_enable(CRM_DMA1_PERIPH_CLOCK, TRUE);
+//	dma_reset(DMA1_CHANNEL3);
+//	dmamux_enable(DMA1, TRUE);
+//	dmamux_init(DMA1MUX_CHANNEL3, DMAMUX_DMAREQ_ID_SPI2_TX);
+//	dma_init_type dma_param;
+//	dma_default_para_init(&dma_param);
+//	dma_param.direction = DMA_DIR_MEMORY_TO_PERIPHERAL; // Transfer memory buffer to SPI2_TX
+//	dma_param.buffer_size = 256;
+//	dma_param.memory_data_width = DMA_MEMORY_DATA_WIDTH_HALFWORD;	// 16 bit
+//	dma_param.memory_inc_enable = TRUE;
+//	dma_param.peripheral_data_width = DMA_PERIPHERAL_DATA_WIDTH_HALFWORD;
+//	dma_param.peripheral_inc_enable = FALSE;
+//	dma_param.priority = DMA_PRIORITY_MEDIUM;
+//	dma_param.loop_mode_enable = FALSE;
+//	dma_param.memory_base_addr = (uint32_t)dac_tx_buf;
+//	dma_param.peripheral_base_addr = (uint32_t)&(SPI2->dt);
+//	dma_init(DMA1_CHANNEL3, &dma_param);
+
+	crm_periph_clock_enable(CRM_SPI2_PERIPH_CLOCK, TRUE);
+	spi_init_type spi_param;
+	spi_default_para_init(&spi_param);
+	spi_param.transmission_mode = SPI_TRANSMIT_FULL_DUPLEX;
+	spi_param.master_slave_mode = SPI_MODE_MASTER;
+	spi_param.mclk_freq_division = SPI_MCLK_DIV_8;
+	spi_param.first_bit_transmission = SPI_FIRST_BIT_MSB;
+	spi_param.frame_bit_num = SPI_FRAME_16BIT;
+	spi_param.clock_polarity = SPI_CLOCK_POLARITY_HIGH;
+	spi_param.clock_phase = SPI_CLOCK_PHASE_1EDGE;
+	spi_param.cs_mode_selection = SPI_CS_HARDWARE_MODE;
+	spi_init(SPI2, &spi_param);
+//	spi_ti_mode_enable(SPI2, TRUE);
+	spi_hardware_cs_output_enable(SPI2, TRUE);
+//	spi_i2s_dma_transmitter_enable(SPI2, TRUE);
+
+	//spi_software_cs_internal_level_set(SPI2, SPI_SWCS_INTERNAL_LEVEL_LOW);
+
+	spi_enable(SPI2, TRUE);
+
+	GPIOD->clr = GPIO_PINS_3;
+//	dma_channel_enable(DMA1_CHANNEL3, TRUE);
+
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_mode = GPIO_MODE_OUTPUT;
+	gpio_param.gpio_pull = GPIO_PULL_DOWN;
+	gpio_param.gpio_pins = GPIO_PINS_0;
+	gpio_init(GPIOD, &gpio_param);
+
+	for(int i = 0; i < 1024; i++) {
+
+//		gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+//		gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+//		gpio_param.gpio_mode = GPIO_MODE_MUX;
+//		gpio_param.gpio_pull = GPIO_PULL_NONE;
+//		gpio_param.gpio_pins = GPIO_PINS_0;
+//		gpio_init(GPIOD, &gpio_param);
+//		gpio_pin_mux_config(GPIOD, GPIO_PINS_SOURCE0, GPIO_MUX_7);
+
+		//delay_us(1);
+	    while(spi_i2s_flag_get(SPI2, SPI_I2S_TDBE_FLAG) == RESET);
+		spi_i2s_data_transmit(SPI2, dac_tx_buf[i]);
+	}
+
+	//GPIOD->scr = GPIO_PINS_3;
+
+	delay_us(10);
+
+}
+
+int nn = 0;
+void TMR1_OVF_TMR10_IRQHandler(void) {
+	tmr_flag_clear(TMR1, TMR_OVF_FLAG);
+
+
+	GPIOD->scr = GPIO_PINS_0;
+	//delay_us(1);
+
+	GPIOD->scr = GPIO_PINS_3;
+	//delay_us(1);
+
+	uint16_t val = dac_tx_buf[nn];
+
+	nn += nn > 1 ? 6 : 1;
+
+	if(nn >= 1024) nn = 0;
+
+	GPIOD->clr = GPIO_PINS_3;
+	//delay_us(1);
+
+    GPIOD->clr = GPIO_PINS_0;
+    //delay_us(1);
+
+
+    spi_i2s_data_transmit(SPI2, val);
+}
+
+void test_timer(void) {
+	crm_periph_clock_enable(CRM_GPIOD_PERIPH_CLOCK, TRUE);
+	gpio_init_type gpio_param;
+	gpio_default_para_init(&gpio_param);
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_mode = GPIO_MODE_OUTPUT;
+	gpio_param.gpio_pull = GPIO_PULL_DOWN;
+	gpio_param.gpio_pins = GPIO_PINS_0;
+	gpio_init(GPIOD, &gpio_param);
+
+	crm_periph_clock_enable(CRM_TMR1_PERIPH_CLOCK, TRUE);
+	tmr_base_init(TMR1, 17, 15);	// 288MHz / 16 (15) = 18 (cntr 18 - 1 = 17)
+	tmr_cnt_dir_set(TMR1, TMR_COUNT_UP);
+	tmr_interrupt_enable(TMR1, TMR_OVF_INT, TRUE);
+
+	nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
+	nvic_irq_enable(TMR1_OVF_TMR10_IRQn, 1, 0);
+
+	tmr_counter_enable(TMR1, TRUE);
+
+	while(1);
+}
+
+uint16_t send_buf[1024];
+
+void test_spi_ti_send(){
+	gpio_init_type gpio_param;
+	crm_periph_clock_enable(CRM_GPIOA_PERIPH_CLOCK, TRUE);
+	gpio_default_para_init(&gpio_param);
+	/* spi1 cs pin */
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_mode = GPIO_MODE_MUX;
+	gpio_param.gpio_pull = GPIO_PULL_DOWN;
+	gpio_param.gpio_pins = GPIO_PINS_4;
+	gpio_init(GPIOA, &gpio_param);
+	gpio_pin_mux_config(GPIOA, GPIO_PINS_SOURCE4, GPIO_MUX_5);
+	/* spi1 sck pin */
+	gpio_param.gpio_pull = GPIO_PULL_DOWN;
+	gpio_param.gpio_pins = GPIO_PINS_5;
+	gpio_init(GPIOA, &gpio_param);
+	gpio_pin_mux_config(GPIOA, GPIO_PINS_SOURCE5, GPIO_MUX_5);
+	/* spi1 mosi pin */
+	gpio_param.gpio_pull = GPIO_PULL_UP;
+	gpio_param.gpio_pins = GPIO_PINS_7;
+	gpio_init(GPIOA, &gpio_param);
+	gpio_pin_mux_config(GPIOA, GPIO_PINS_SOURCE7, GPIO_MUX_5);
+
+	crm_periph_clock_enable(CRM_DMA1_PERIPH_CLOCK, TRUE);
+	dma_reset(DMA1_CHANNEL4);
+	dmamux_enable(DMA1, TRUE);
+	dmamux_init(DMA1MUX_CHANNEL4, DMAMUX_DMAREQ_ID_SPI1_TX);
+	dma_init_type dma_param;
+	dma_default_para_init(&dma_param);
+	dma_param.direction = DMA_DIR_MEMORY_TO_PERIPHERAL; // Transfer memory buffer to SPI1_TX
+	dma_param.buffer_size = 1024;
+	dma_param.memory_data_width = DMA_MEMORY_DATA_WIDTH_HALFWORD;	// 16 bit
+	dma_param.memory_inc_enable = TRUE;
+	dma_param.peripheral_data_width = DMA_PERIPHERAL_DATA_WIDTH_HALFWORD;
+	dma_param.peripheral_inc_enable = FALSE;
+	dma_param.priority = DMA_PRIORITY_HIGH;
+	dma_param.loop_mode_enable = FALSE;
+	dma_param.memory_base_addr = (uint32_t)send_buf;
+	dma_param.peripheral_base_addr = (uint32_t)&(SPI1->dt);
+	dma_init(DMA1_CHANNEL4, &dma_param);
+
+	crm_periph_clock_enable(CRM_SPI1_PERIPH_CLOCK, TRUE);
+	spi_init_type spi_param;
+	spi_default_para_init(&spi_param);
+	spi_param.transmission_mode = SPI_TRANSMIT_HALF_DUPLEX_TX;
+	spi_param.master_slave_mode = SPI_MODE_MASTER;
+	spi_param.mclk_freq_division = SPI_MCLK_DIV_8;
+	spi_param.first_bit_transmission = SPI_FIRST_BIT_MSB;
+	spi_param.frame_bit_num = SPI_FRAME_16BIT;
+	//spi_param.clock_polarity = SPI_CLOCK_POLARITY_LOW;
+	//spi_param.clock_phase = SPI_CLOCK_PHASE_2EDGE;
+	spi_param.cs_mode_selection = SPI_CS_HARDWARE_MODE;
+	spi_init(SPI1, &spi_param);
+	spi_i2s_dma_transmitter_enable(SPI1, TRUE);
+	spi_ti_mode_enable(SPI1, TRUE);
+	spi_enable(SPI1, TRUE);
+
+	dma_channel_enable(DMA1_CHANNEL4, TRUE);
+
+	while(dma_flag_get(DMA1_FDT4_FLAG) == RESET);
+
+	delay_us(10);
+}
+
 
 /**
   * @brief  main function.
   * @param  none
   * @retval none
   */
-int main(void)
-{
-  system_clock_config();
+int main(void) {
+	system_clock_config();
 
-  at32_board_init();
+	at32_board_init();
 
-  button_exint_init();
+	button_exint_init();
 
-  for(int i = 0; i < 128; i++)
-	  spi_tx_buf[i] = 0x55AA;
+	uint16_t kk = 0;
+	while(1){
+		for(int i = 0; i < 1024; i++) {
+			send_buf[i] = i + kk;
+		}
+		kk++;
+		test_spi_ti_send();
+	}
 
-  test_adc();
+	dac_tx_buf[0] = 0x1000;
+	dac_tx_buf[1] = 0x5000;
+	for(int i = 2; i < 1024; i++) {
+		dac_tx_buf[i] = i < 512 ? 0x1000 + i * 8 : 0x5000 + (i - 512) * 8;
+	}
 
-  while(1)
-  {
+	test_dac_swcs();
+
+	test_timer();
+
+	for (int i = 0; i < 128; i++)
+		spi_tx_buf[i] = 0x55AA;
+
+	while (1) {
+		test_adc();
+	}
+
+	while (1) {
 	  test_spi();
 //    at32_led_toggle(LED2);
 //    delay_ms(g_speed * DELAY);
@@ -250,7 +605,7 @@ int main(void)
 //    delay_ms(g_speed * DELAY);
 //    at32_led_toggle(LED4);
 //    delay_ms(g_speed * DELAY);
-  }
+	}
 }
 
 /**
