@@ -95,7 +95,7 @@ module full_scan(
 	assign rcv_sync = ~prev_rcv_sync_latch && rcv_sync_latch;
 	
 	reg			[0:0]			rd_ws;
-	always @ (posedge sys_clk or rst_n)
+	always @ (posedge sys_clk or negedge rst_n)
 		if(~rst_n) begin
 			rd_ptr <= 13'd0;
 			rd_half <= 1'b0;
