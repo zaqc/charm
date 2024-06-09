@@ -25,6 +25,18 @@ module full_scan(
 		.o_vld(r_vld)
 	);
 	
+	wire		[31:0]			adc_data;
+	wire						adc_vld;
+	
+	pack_adc pack_adc_u0(
+		.rst_n(rst_n),
+		.clk(rcv_clk),
+		.i_adc_data(r_data[9:0]),
+		.i_adc_vld(r_vld),
+		.o_out_data(adc_data),
+		.o_out_vld(adc_vld)
+	);
+	
 	reg			[12:0]			wr_ptr;
 	reg			[0:0]			wr_half;
 	wire						rcv_sync;
@@ -39,7 +51,7 @@ module full_scan(
 				wr_half <= ~wr_half;				
 			end
 			else
-				if(r_vld && ~wr_ptr[12])
+				if(adc_vld && ~wr_ptr[12])
 					wr_ptr <= wr_ptr + 1'd1;
 					
 	reg			[12:0]			rd_ptr;
@@ -48,8 +60,8 @@ module full_scan(
 	fs_mem_buf fs_mem_buf_u0(
 		.wrclock(rcv_clk),
 		.wraddress({wr_half, wr_ptr[11:0]}),
-		.data(r_data),
-		.wren(r_vld && ~wr_ptr[12]),
+		.data(adc_data),
+		.wren(adc_vld && ~wr_ptr[12]),
 		
 		.rdclock(sys_clk),
 		.rdaddress({rd_half, rd_ptr[11:0]}),
