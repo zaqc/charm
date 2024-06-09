@@ -48,6 +48,10 @@ module data_provider_tb;
 		@ (negedge sys_clk) sync <= 1'b1;
 		#20
 		@ (negedge sys_clk) sync <= 1'b0;
+		#140000
+		@ (negedge sys_clk) sync <= 1'b1;
+		#20
+		@ (negedge sys_clk) sync <= 1'b0;
 	end
 	
 	wire						st_vld;
@@ -85,10 +89,17 @@ module data_provider_tb;
 			num <= num + 1'd1;
 		end
 	end
-	rcvr rcvr_u0(
-		.i_clk(clk),
-		.i_fs(cs),
-		.i_d(d)
+	
+	full_scan full_scan_u0(
+		.rst_n(rst_n),
+		.sys_clk(sys_clk),
+		.rcv_clk(clk),
+		.i_rcv_fs(cs),
+		.i_rcv_data(d),
+		
+		.i_send_sync(sync),
+		
+		.i_st_rdy(1'b1)
 	);
 
 endmodule
