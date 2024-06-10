@@ -90,6 +90,34 @@ module data_provider_tb;
 		end
 	end
 	
+	reg			[15:0]			tst_val;
+	wire						tsmt_rdy;
+	always @ (posedge sys_clk or negedge rst_n)
+		if(~rst_n)
+			tst_val <= 16'd0;
+		else
+			if(tsmt_rdy)
+				tst_val <= tst_val + 1'd1;
+	
+	wire						tsmt_fs;
+	wire						tsmt_d;
+	tsmt tsmt_u0(
+		.rst_n(rst_n),
+		.clk(sys_clk),
+		.i_tx_data(tst_val),
+		.i_tx_vld(1'b1),
+		.o_tx_rdy(tsmt_rdy),
+		
+		.o_fs(tsmt_fs),
+		.o_d(tsmt_d)
+	);
+	
+	rcvr rcvr_u0(
+		.i_clk(sys_clk),
+		.i_fs(tsmt_fs),
+		.i_d(tsmt_d)
+	);
+	
 	full_scan full_scan_u0(
 		.rst_n(rst_n),
 		.sys_clk(sys_clk),

@@ -51,20 +51,20 @@ void button_isr(void);
   */
 void button_exint_init(void)
 {
-  exint_init_type exint_init_struct;
-
-  crm_periph_clock_enable(CRM_SCFG_PERIPH_CLOCK, TRUE);
-  scfg_exint_line_config(SCFG_PORT_SOURCE_GPIOA, SCFG_PINS_SOURCE0);
-
-  exint_default_para_init(&exint_init_struct);
-  exint_init_struct.line_enable = TRUE;
-  exint_init_struct.line_mode = EXINT_LINE_INTERRUPUT;
-  exint_init_struct.line_select = EXINT_LINE_0;
-  exint_init_struct.line_polarity = EXINT_TRIGGER_RISING_EDGE;
-  exint_init(&exint_init_struct);
-
-  nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
-  nvic_irq_enable(EXINT0_IRQn, 0, 0);
+//  exint_init_type exint_init_struct;
+//
+//  crm_periph_clock_enable(CRM_SCFG_PERIPH_CLOCK, TRUE);
+//  scfg_exint_line_config(SCFG_PORT_SOURCE_GPIOA, SCFG_PINS_SOURCE0);
+//
+//  exint_default_para_init(&exint_init_struct);
+//  exint_init_struct.line_enable = TRUE;
+//  exint_init_struct.line_mode = EXINT_LINE_INTERRUPUT;
+//  exint_init_struct.line_select = EXINT_LINE_0;
+//  exint_init_struct.line_polarity = EXINT_TRIGGER_RISING_EDGE;
+//  exint_init(&exint_init_struct);
+//
+//  nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
+//  nvic_irq_enable(EXINT0_IRQn, 0, 0);
 }
 
 /**
@@ -95,10 +95,10 @@ void button_isr(void)
   * @param  none
   * @retval none
   */
-void EXINT0_IRQHandler(void)
-{
-  button_isr();
-}
+//void EXINT0_IRQHandler(void)
+//{
+//  button_isr();
+//}
 
 int16_t spi_tx_buf[4096];	// 4096
 
@@ -244,10 +244,10 @@ void test_adc(void) {
 
 	//tmr_counter_enable(TMR4, FALSE);
 
-	for (int i = 0; i < 1024; i++)
-		spi_tx_buf[i] =  512 - (0x3FF & spi_tx_buf[i]);
+//	for (int i = 0; i < 1024; i++)
+//		spi_tx_buf[i] =  512 - (0x3FF & spi_tx_buf[i]);
 
-	delay_us(10);
+	//delay_us(10);
 }
 
 uint16_t dac_tx_buf[1024];	// 4096
@@ -437,7 +437,7 @@ void test_dac_swcs(void) {
 
 	//GPIOD->scr = GPIO_PINS_3;
 
-	delay_us(10);
+	//delay_us(10);
 
 }
 
@@ -489,12 +489,12 @@ void test_timer(void) {
 
 	tmr_counter_enable(TMR1, TRUE);
 
-	while(1);
+	//while(1);
 }
 
-uint16_t send_buf[1024];
+uint16_t send_buf[4096];
 
-void test_spi_ti_send(){
+void test_spi_ti_send(){	// Data Stream
 	gpio_init_type gpio_param;
 	crm_periph_clock_enable(CRM_GPIOA_PERIPH_CLOCK, TRUE);
 	gpio_default_para_init(&gpio_param);
@@ -555,9 +555,93 @@ void test_spi_ti_send(){
 
 	while(dma_flag_get(DMA1_FDT4_FLAG) == RESET);
 
-	delay_us(10);
+	//delay_us(10);
 }
 
+volatile int irq_cntr = 0;
+void EXINT15_10_IRQHandler(void) {
+	if (exint_flag_get(EXINT_LINE_13) != RESET) {
+		irq_cntr = 1;
+		exint_flag_clear(EXINT_LINE_13);
+	}
+}
+
+void get_gpio_sync(void) {
+	crm_periph_clock_enable(CRM_GPIOE_PERIPH_CLOCK, TRUE);
+	gpio_init_type gpio_param;
+	gpio_default_para_init(&gpio_param);
+	/* sync pin PE13 */
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_mode = GPIO_MODE_INPUT;
+	gpio_param.gpio_pull = GPIO_PULL_DOWN;
+	gpio_param.gpio_pins = GPIO_PINS_13;
+	gpio_init(GPIOE, &gpio_param);
+
+	//EXINT0_IRQn
+	crm_periph_clock_enable(CRM_SCFG_PERIPH_CLOCK, TRUE);
+	scfg_exint_line_config(SCFG_PORT_SOURCE_GPIOE, SCFG_PINS_SOURCE13);
+	exint_init_type exint_param;
+	exint_default_para_init(&exint_param);
+	exint_param.line_enable = TRUE;
+	exint_param.line_mode = EXINT_LINE_INTERRUPUT;
+	exint_param.line_polarity = EXINT_TRIGGER_RISING_EDGE;
+	exint_param.line_select = EXINT_LINE_13;
+	exint_init(&exint_param);
+
+	nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
+	nvic_irq_enable(EXINT15_10_IRQn, 1, 0);
+}
+
+
+void SPI4_EXT_IRQHandler(void) {
+	if (spi_i2s_flag_get(SPI4, SPI_I2S_RDBF_FLAG) != RESET) {
+		uint16_t val = spi_i2s_data_receive(SPI4);
+		(void)val;
+	}
+}
+
+static void rcv_cmd_spi4(void) {
+	gpio_init_type gpio_param;
+	crm_periph_clock_enable(CRM_GPIOE_PERIPH_CLOCK, TRUE);
+	/* master cs pin */
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_pull = GPIO_PULL_DOWN;
+	gpio_param.gpio_mode = GPIO_MODE_MUX;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_pins = GPIO_PINS_11;
+	gpio_init(GPIOE, &gpio_param);
+	gpio_pin_mux_config(GPIOE, GPIO_PINS_SOURCE11, GPIO_MUX_5);
+	/* slave sck pin */
+	gpio_param.gpio_pull = GPIO_PULL_DOWN;
+	gpio_param.gpio_pins = GPIO_PINS_12;
+	gpio_init(GPIOE, &gpio_param);
+	gpio_pin_mux_config(GPIOE, GPIO_PINS_SOURCE12, GPIO_MUX_5);
+	/* master mosi pin */
+	gpio_param.gpio_pull = GPIO_PULL_UP;
+	gpio_param.gpio_pins = GPIO_PINS_14;
+	gpio_init(GPIOE, &gpio_param);
+	gpio_pin_mux_config(GPIOE, GPIO_PINS_SOURCE14, GPIO_MUX_5);
+
+	crm_periph_clock_enable(CRM_SPI4_PERIPH_CLOCK, TRUE);
+	spi_init_type spi_param;
+	spi_default_para_init(&spi_param);
+	spi_param.transmission_mode = SPI_TRANSMIT_HALF_DUPLEX_RX;
+	spi_param.master_slave_mode = SPI_MODE_SLAVE;
+	spi_param.mclk_freq_division = SPI_MCLK_DIV_16;
+	spi_param.first_bit_transmission = SPI_FIRST_BIT_MSB;
+	spi_param.frame_bit_num = SPI_FRAME_16BIT;
+	spi_param.clock_polarity = SPI_CLOCK_POLARITY_HIGH;
+	spi_param.clock_phase = SPI_CLOCK_PHASE_1EDGE;
+	spi_param.cs_mode_selection = SPI_CS_SOFTWARE_MODE;
+
+	spi_init(SPI4, &spi_param);
+
+	nvic_irq_enable(SPI4_IRQn, 0, 0);
+	spi_i2s_interrupt_enable(SPI2, SPI_I2S_RDBF_INT, TRUE);
+
+	spi_enable(SPI4, TRUE);
+}
 
 /**
   * @brief  main function.
@@ -571,24 +655,41 @@ int main(void) {
 
 	button_exint_init();
 
+	get_gpio_sync();
+
+	dac_tx_buf[0] = 0x1100;
+	dac_tx_buf[1] = 0x5100;
+	for(int i = 2; i < 1024; i++) {
+		dac_tx_buf[i] = i < 128 ? 0x1000 + i * 8 : 0x5000 + (i - 512) * 8;
+	}
+
+//	for(int i = 0; i < 1024; i += 2) {
+//		dac_tx_buf[i] = 0x1000 + 1500;
+//		dac_tx_buf[i + 1] = 0x5000 + 1500;
+//	}
+
+	test_dac_swcs();	// init VRC (DAC SPI)
+
+	test_timer();		// Send VRC from Timer Interrupt
+	//tmr_counter_enable(TMR1, TRUE);
+	//while(1);
+
 	uint16_t kk = 0;
-	while(1){
+	while(1) {
+		nn = 100;
+		tmr_counter_enable(TMR1, TRUE);
+		test_adc();
+		tmr_counter_enable(TMR1, FALSE);
+
 		for(int i = 0; i < 1024; i++) {
-			send_buf[i] = i + kk;
+			send_buf[i] = spi_tx_buf[i];
+			//send_buf[i] = i + kk;
 		}
 		kk++;
+		while(!irq_cntr);
+		irq_cntr = 0;
 		test_spi_ti_send();
 	}
-
-	dac_tx_buf[0] = 0x1000;
-	dac_tx_buf[1] = 0x5000;
-	for(int i = 2; i < 1024; i++) {
-		dac_tx_buf[i] = i < 512 ? 0x1000 + i * 8 : 0x5000 + (i - 512) * 8;
-	}
-
-	test_dac_swcs();
-
-	test_timer();
 
 	for (int i = 0; i < 128; i++)
 		spi_tx_buf[i] = 0x55AA;
