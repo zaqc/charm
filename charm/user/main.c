@@ -594,10 +594,15 @@ void get_gpio_sync(void) {
 }
 
 
-void SPI4_EXT_IRQHandler(void) {
+uint16_t r_buf[1024];
+volatile uint32_t r_ptr = 0;
+void SPI4_IRQHandler(void) {
 	if (spi_i2s_flag_get(SPI4, SPI_I2S_RDBF_FLAG) != RESET) {
 		uint16_t val = spi_i2s_data_receive(SPI4);
-		(void)val;
+		r_buf[r_ptr++] = val;
+		if(r_ptr >= 1024) {
+			r_ptr = 0;
+		}
 	}
 }
 
@@ -618,7 +623,7 @@ static void rcv_cmd_spi4(void) {
 	gpio_init(GPIOE, &gpio_param);
 	gpio_pin_mux_config(GPIOE, GPIO_PINS_SOURCE12, GPIO_MUX_5);
 	/* master mosi pin */
-	gpio_param.gpio_pull = GPIO_PULL_UP;
+	gpio_param.gpio_pull = GPIO_PULL_DOWN;
 	gpio_param.gpio_pins = GPIO_PINS_14;
 	gpio_init(GPIOE, &gpio_param);
 	gpio_pin_mux_config(GPIOE, GPIO_PINS_SOURCE14, GPIO_MUX_5);
@@ -626,9 +631,9 @@ static void rcv_cmd_spi4(void) {
 	crm_periph_clock_enable(CRM_SPI4_PERIPH_CLOCK, TRUE);
 	spi_init_type spi_param;
 	spi_default_para_init(&spi_param);
-	spi_param.transmission_mode = SPI_TRANSMIT_HALF_DUPLEX_RX;
+	spi_param.transmission_mode = SPI_TRANSMIT_FULL_DUPLEX;
 	spi_param.master_slave_mode = SPI_MODE_SLAVE;
-	spi_param.mclk_freq_division = SPI_MCLK_DIV_16;
+	spi_param.mclk_freq_division = SPI_MCLK_DIV_8;
 	spi_param.first_bit_transmission = SPI_FIRST_BIT_MSB;
 	spi_param.frame_bit_num = SPI_FRAME_16BIT;
 	spi_param.clock_polarity = SPI_CLOCK_POLARITY_HIGH;
@@ -638,7 +643,9 @@ static void rcv_cmd_spi4(void) {
 	spi_init(SPI4, &spi_param);
 
 	nvic_irq_enable(SPI4_IRQn, 0, 0);
-	spi_i2s_interrupt_enable(SPI2, SPI_I2S_RDBF_INT, TRUE);
+	spi_i2s_interrupt_enable(SPI4, SPI_I2S_RDBF_INT, TRUE);
+
+	spi_ti_mode_enable(SPI4, TRUE);
 
 	spi_enable(SPI4, TRUE);
 }
@@ -654,6 +661,8 @@ int main(void) {
 	at32_board_init();
 
 	button_exint_init();
+
+	rcv_cmd_spi4();
 
 	get_gpio_sync();
 
