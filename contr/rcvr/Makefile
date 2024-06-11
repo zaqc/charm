@@ -3,7 +3,7 @@ FLAGS = -Wall -Winfloop -g2005-sv -DTESTMODE=1 -DTARGET_NAME="\""$(TARGET)"\""
 
 TARGET = rcvr
 
-SRC = $(TARGET)_tb.v $(TARGET).v tsmt.v full_scan.v pack_adc.v fs_mem_buf.v
+SRC = $(TARGET)_tb.v $(TARGET).v tsmt.v cmd_pack.v full_scan.v pack_adc.v fs_mem_buf.v
 
 $(TARGET) : $(SRC) Makefile
 	$(CC) $(FLAGS) -o $(TARGET) $(SRC)

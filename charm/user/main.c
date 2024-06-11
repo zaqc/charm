@@ -452,9 +452,9 @@ void TMR1_OVF_TMR10_IRQHandler(void) {
 	GPIOD->scr = GPIO_PINS_3;
 	//delay_us(1);
 
-	uint16_t val = dac_tx_buf[nn];
+	uint16_t val = dac_tx_buf[nn++];
 
-	nn += nn > 1 ? 6 : 1;
+	//nn += nn > 1 ? 6 : 1;
 
 	if(nn >= 1024) nn = 0;
 
@@ -596,10 +596,53 @@ void get_gpio_sync(void) {
 
 uint16_t r_buf[1024];
 volatile uint32_t r_ptr = 0;
+int decode_step = 0;
+uint32_t cmd;
+uint32_t amp_one = 0;
+uint32_t amp_two = 0;
 void SPI4_IRQHandler(void) {
 	if (spi_i2s_flag_get(SPI4, SPI_I2S_RDBF_FLAG) != RESET) {
 		uint16_t val = spi_i2s_data_receive(SPI4);
+
+		switch(decode_step) {
+		case 0:
+			if(val == 0x55FF)
+				decode_step = 1;
+			break;
+		case 1:
+			cmd = ((uint32_t)val) << 16;
+			decode_step = 2;
+			break;
+		case 2:
+			cmd |= val;
+			decode_step = 3;
+			break;
+		case 3:
+			if(val == 0xFFAA) {
+				decode_step = 4;
+			} else
+				decode_step = 0;
+			break;
+		}
+
+		if(decode_step == 4) {
+			uint8_t cmd_num = (cmd >> 24) & 0xFF;
+			uint32_t cmd_param = cmd & 0xFFFF;
+			switch(cmd_num){
+			case 0x32:
+				amp_one = cmd_param / 8;
+				break;
+			case 0x33:
+				amp_two = cmd_param / 8;
+				break;
+			}
+			decode_step = 0;
+		}
+
 		r_buf[r_ptr++] = val;
+		if(val == 0xFFFF) {
+			r_ptr = 0;
+		}
 		if(r_ptr >= 1024) {
 			r_ptr = 0;
 		}
@@ -672,11 +715,6 @@ int main(void) {
 		dac_tx_buf[i] = i < 128 ? 0x1000 + i * 8 : 0x5000 + (i - 512) * 8;
 	}
 
-//	for(int i = 0; i < 1024; i += 2) {
-//		dac_tx_buf[i] = 0x1000 + 1500;
-//		dac_tx_buf[i + 1] = 0x5000 + 1500;
-//	}
-
 	test_dac_swcs();	// init VRC (DAC SPI)
 
 	test_timer();		// Send VRC from Timer Interrupt
@@ -685,7 +723,11 @@ int main(void) {
 
 	uint16_t kk = 0;
 	while(1) {
-		nn = 100;
+		for(int i = 0; i < 1024; i += 2) {
+			dac_tx_buf[i] = 0x1000 + amp_one; //1000;
+			dac_tx_buf[i + 1] = 0x5000 + amp_two; //1000;
+		}
+		nn = 0;
 		tmr_counter_enable(TMR1, TRUE);
 		test_adc();
 		tmr_counter_enable(TMR1, FALSE);

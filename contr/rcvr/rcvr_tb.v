@@ -129,5 +129,20 @@ module data_provider_tb;
 		
 		.i_st_rdy(1'b1)
 	);
+	
+	reg			[31:0]			pack_cntr;
+	always @ (posedge sys_clk or negedge rst_n)
+		if(~rst_n)
+			pack_cntr <= 32'd0;
+		else
+			pack_cntr <= pack_cntr + 32'h12345678;
+	
+	cmd_pack cmd_pack_u0(
+		.rst_n(rst_n),
+		.clk(sys_clk),
+		
+		.i_in_data(pack_cntr),
+		.i_in_vld(1'b1)
+	);
 
 endmodule
