@@ -196,7 +196,7 @@ void test_adc(void) {
 	gpio_pin_mux_config(GPIOB, GPIO_PINS_SOURCE6, GPIO_MUX_2);
 
 	crm_periph_clock_enable(CRM_TMR4_PERIPH_CLOCK, TRUE);
-	tmr_base_init(TMR4, 9, 0);
+	tmr_base_init(TMR4, 10, 0);
 	tmr_cnt_dir_set(TMR4, TMR_COUNT_UP);
 
 	/* channel 3 configuration in output mode */
@@ -216,7 +216,7 @@ void test_adc(void) {
 	crm_periph_clock_enable(CRM_DMA1_PERIPH_CLOCK, TRUE);
 	dma_reset(DMA1_CHANNEL2);
 	dma_init_type dma_param;
-	dma_param.buffer_size = 1024;
+	dma_param.buffer_size = 4096; //1024;
 	dma_param.direction = DMA_DIR_PERIPHERAL_TO_MEMORY;
 	dma_param.memory_base_addr = (uint32_t) spi_tx_buf;
 	dma_param.memory_data_width = DMA_MEMORY_DATA_WIDTH_HALFWORD;
@@ -240,7 +240,7 @@ void test_adc(void) {
 	/* enable tmr1 */
 	tmr_counter_enable(TMR4, TRUE);
 
-	while(dma_flag_get(DMA1_FDT2_FLAG) == RESET);
+	//while(dma_flag_get(DMA1_FDT2_FLAG) == RESET);
 
 	//tmr_counter_enable(TMR4, FALSE);
 
@@ -649,7 +649,7 @@ void SPI4_IRQHandler(void) {
 	}
 }
 
-static void rcv_cmd_spi4(void) {
+void rcv_cmd_spi4(void) {
 	gpio_init_type gpio_param;
 	crm_periph_clock_enable(CRM_GPIOE_PERIPH_CLOCK, TRUE);
 	/* master cs pin */
@@ -693,6 +693,155 @@ static void rcv_cmd_spi4(void) {
 	spi_enable(SPI4, TRUE);
 }
 
+volatile uint8_t pulse_pin = 0;
+void TMR20_OVF_IRQHandler(void) {
+	//tmr_flag_clear(TMR20, TMR_OVF_FLAG);
+	TMR20->ists = ~TMR_OVF_FLAG;
+
+		if ((pulse_pin & 1) == 0) {
+			TMR20->cm1_output_bit.c1octrl = TMR_OUTPUT_CONTROL_LOW;
+			TMR20->cm1_output_bit.c2octrl = TMR_OUTPUT_CONTROL_PWM_MODE_A;
+
+			//tmr_output_channel_mode_select(TMR20, TMR_SELECT_CHANNEL_1, TMR_OUTPUT_CONTROL_FORCE_LOW);
+			//tmr_output_channel_mode_select(TMR20, TMR_SELECT_CHANNEL_2, TMR_OUTPUT_CONTROL_PWM_MODE_A);
+			//tmr_channel_enable(TMR20, TMR_SELECT_CHANNEL_1, TRUE);
+			//tmr_channel_enable(TMR20, TMR_SELECT_CHANNEL_2, TRUE);
+
+			//tmr_channel_value_set(TMR20, TMR_SELECT_CHANNEL_2, 20);
+
+			//GPIOE->scr = GPIO_PINS_2;
+			//GPIOE->clr = GPIO_PINS_3;
+
+			//pulse_pin = 1;
+		} else {
+
+			TMR20->cm1_output_bit.c2octrl = TMR_OUTPUT_CONTROL_LOW;
+			TMR20->cm1_output_bit.c1octrl = TMR_OUTPUT_CONTROL_PWM_MODE_A;
+
+			//tmr_output_channel_mode_select(TMR20, TMR_SELECT_CHANNEL_2, TMR_OUTPUT_CONTROL_FORCE_LOW);
+			//tmr_output_channel_mode_select(TMR20, TMR_SELECT_CHANNEL_1, TMR_OUTPUT_CONTROL_PWM_MODE_A);
+			//tmr_channel_enable(TMR20, TMR_SELECT_CHANNEL_1, TRUE);
+			//tmr_channel_enable(TMR20, TMR_SELECT_CHANNEL_2, TRUE);
+
+			//tmr_channel_value_set(TMR20, TMR_SELECT_CHANNEL_1, 20);
+
+			//GPIOE->scr = GPIO_PINS_3;
+			//GPIOE->clr = GPIO_PINS_2;
+
+			//pulse_pin = 0;
+		}
+	if (pulse_pin > 4) {
+		TMR20->cval = 0;
+
+		TMR20->cm1_output_bit.c1octrl = TMR_OUTPUT_CONTROL_LOW;
+		TMR20->cm1_output_bit.c2octrl = TMR_OUTPUT_CONTROL_LOW;
+
+		TMR20->ctrl1_bit.tmren = 0;
+	}
+
+	pulse_pin++;
+
+
+	//tmr_one_cycle_mode_enable(TMR20, TRUE);
+}
+
+#define	PULSE_DELAY_10	__asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP")
+#define	PULSE_DELAY_20	PULSE_DELAY_10;	PULSE_DELAY_10
+#define	PULSE_DELAY_30	PULSE_DELAY_20;	PULSE_DELAY_10
+#define	PULSE_DELAY_40	PULSE_DELAY_20;	PULSE_DELAY_20
+
+void pulse_set(void) {
+	crm_periph_clock_enable(CRM_GPIOE_PERIPH_CLOCK, TRUE);
+	gpio_init_type gpio_param;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_pins = GPIO_PINS_2 | GPIO_PINS_3;
+	gpio_param.gpio_mode = GPIO_MODE_OUTPUT; //MUX;
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_pull = GPIO_PULL_UP; //DOWN;
+	gpio_init(GPIOE, &gpio_param);
+	gpio_pin_mux_config(GPIOE, GPIO_PINS_SOURCE2, GPIO_MUX_6);
+	gpio_pin_mux_config(GPIOE, GPIO_PINS_SOURCE3, GPIO_MUX_6);
+
+	register uint8_t dly;
+	GPIOE->clr = GPIO_PINS_3;
+	GPIOE->scr = GPIO_PINS_2;
+	PULSE_DELAY_30;
+	PULSE_DELAY_20;
+	GPIOE->clr = GPIO_PINS_2;
+	__asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP");
+	__asm("NOP"); __asm("NOP");
+	GPIOE->scr = GPIO_PINS_3;
+
+	PULSE_DELAY_30;
+	PULSE_DELAY_20;
+	GPIOE->clr = GPIO_PINS_3;
+	__asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP");
+	__asm("NOP"); __asm("NOP");
+	GPIOE->scr = GPIO_PINS_2;
+
+	PULSE_DELAY_30;
+	PULSE_DELAY_20;
+	GPIOE->clr = GPIO_PINS_2;
+	__asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP");
+	__asm("NOP"); __asm("NOP");
+	GPIOE->scr = GPIO_PINS_3;
+
+	PULSE_DELAY_30;
+	PULSE_DELAY_20;
+	GPIOE->clr = GPIO_PINS_3;
+	__asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP");
+	__asm("NOP"); __asm("NOP");
+
+/*
+	crm_periph_clock_enable(CRM_TMR20_PERIPH_CLOCK, TRUE);
+	tmr_output_config_type tmr_param;
+	tmr_output_default_para_init(&tmr_param);
+	tmr_param.oc_idle_state = TRUE;
+	tmr_param.oc_mode = TMR_OUTPUT_CONTROL_SWITCH;
+	tmr_param.oc_output_state = TRUE;
+	tmr_param.oc_polarity = TMR_OUTPUT_ACTIVE_HIGH;
+	tmr_param.occ_idle_state = TRUE;
+	tmr_param.occ_output_state = TRUE;
+	tmr_param.occ_polarity = TMR_OUTPUT_ACTIVE_HIGH;
+	tmr_output_channel_config(TMR20, TMR_SELECT_CHANNEL_1, &tmr_param);
+	tmr_channel_value_set(TMR20, TMR_SELECT_CHANNEL_1, 25);
+	tmr_output_channel_config(TMR20, TMR_SELECT_CHANNEL_2, &tmr_param);
+	tmr_channel_value_set(TMR20, TMR_SELECT_CHANNEL_2, 25);
+
+//	tmr_brkdt_config_type tmr_brkdt_config_struct = { 0 };
+//	tmr_brkdt_default_para_init(&tmr_brkdt_config_struct);
+//	tmr_brkdt_config_struct.brk_enable = TRUE;
+//	tmr_brkdt_config_struct.auto_output_enable = TRUE;
+//	tmr_brkdt_config_struct.deadtime = 0;
+//	tmr_brkdt_config_struct.fcsodis_state = TRUE;
+//	tmr_brkdt_config_struct.fcsoen_state = TRUE;
+//	tmr_brkdt_config_struct.brk_polarity = TMR_BRK_INPUT_ACTIVE_HIGH;
+//	tmr_brkdt_config_struct.wp_level = TMR_WP_OFF;
+//	tmr_brkdt_config(TMR20, &tmr_brkdt_config_struct);
+//	tmr_channel_buffer_enable(TMR20, TRUE);
+
+	TMR20->cval = 0;
+	tmr_flag_clear(TMR20, TMR_OVF_FLAG);
+
+	pulse_pin = 0;
+
+	tmr_base_init(TMR20, 56, 0);
+	tmr_cnt_dir_set(TMR20, TMR_COUNT_UP);
+
+	tmr_interrupt_enable(TMR20, TMR_OVF_INT, TRUE);
+
+	nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
+	nvic_irq_enable(TMR20_OVF_IRQn, 1, 0);
+
+	tmr_output_enable(TMR20, TRUE);
+	tmr_counter_enable(TMR20, TRUE);
+	//tmr_one_cycle_mode_enable(TMR20, TRUE);
+
+//	tmr_output_channel_buffer_enable(TMR20, TMR_SELECT_CHANNEL_1, TRUE);
+//	tmr_output_channel_buffer_enable(TMR20, TMR_SELECT_CHANNEL_2, TRUE);
+ */
+}
+
 /**
   * @brief  main function.
   * @param  none
@@ -704,6 +853,11 @@ int main(void) {
 	at32_board_init();
 
 	button_exint_init();
+
+//	while (1) {
+//		pulse_set();
+//		delay_us(200);
+//	}
 
 	rcv_cmd_spi4();
 
@@ -727,18 +881,24 @@ int main(void) {
 			dac_tx_buf[i] = 0x1000 + amp_one; //1000;
 			dac_tx_buf[i + 1] = 0x5000 + amp_two; //1000;
 		}
+
+
+		irq_cntr = 0;
+		//delay_us(100);
+		while(!irq_cntr);
+
 		nn = 0;
 		tmr_counter_enable(TMR1, TRUE);
+		pulse_set();
 		test_adc();
+		while(dma_flag_get(DMA1_FDT2_FLAG) == RESET);
 		tmr_counter_enable(TMR1, FALSE);
 
 		for(int i = 0; i < 1024; i++) {
-			send_buf[i] = spi_tx_buf[i];
+			send_buf[i] = spi_tx_buf[i * 4];
 			//send_buf[i] = i + kk;
 		}
 		kk++;
-		while(!irq_cntr);
-		irq_cntr = 0;
 		test_spi_ti_send();
 	}
 
