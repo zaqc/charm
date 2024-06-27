@@ -211,7 +211,7 @@ void test_adc(void) {
 	tmr_param.occ_idle_state = TRUE;
 	/* channel 3 */
 	tmr_output_channel_config(TMR4, TMR_SELECT_CHANNEL_1, &tmr_param);
-	tmr_channel_value_set(TMR4, TMR_SELECT_CHANNEL_1, 7);	// set pulse width
+	tmr_channel_value_set(TMR4, TMR_SELECT_CHANNEL_1, 5);	// set pulse width
 
 	crm_periph_clock_enable(CRM_DMA1_PERIPH_CLOCK, TRUE);
 	dma_reset(DMA1_CHANNEL2);
@@ -238,7 +238,7 @@ void test_adc(void) {
 	/* tmr1 output enable */
 	tmr_output_enable(TMR4, TRUE);
 	/* enable tmr1 */
-	tmr_counter_enable(TMR4, TRUE);
+	//----tmr_counter_enable(TMR4, TRUE);
 
 	//while(dma_flag_get(DMA1_FDT2_FLAG) == RESET);
 
@@ -248,6 +248,9 @@ void test_adc(void) {
 //		spi_tx_buf[i] =  512 - (0x3FF & spi_tx_buf[i]);
 
 	//delay_us(10);
+
+	tmr_sub_mode_select(TMR4, TMR_SUB_TRIGGER_MODE);
+	tmr_trigger_input_select(TMR4, TMR_SUB_INPUT_SEL_IS1); // Slave: TMR4, Master: TMR2 -> Internal Synchro Channel: IS1 (Table 14-3)
 }
 
 uint16_t dac_tx_buf[1024];	// 4096
@@ -456,7 +459,7 @@ void TMR1_OVF_TMR10_IRQHandler(void) {
 
 	//nn += nn > 1 ? 6 : 1;
 
-	if(nn >= 1024) nn = 0;
+	if(nn >= 1024) nn = 1023;
 
 	GPIOD->clr = GPIO_PINS_3;
 	//delay_us(1);
@@ -559,12 +562,12 @@ void test_spi_ti_send(){	// Data Stream
 }
 
 volatile int irq_cntr = 0;
-void EXINT15_10_IRQHandler(void) {
-	if (exint_flag_get(EXINT_LINE_13) != RESET) {
-		irq_cntr = 1;
-		exint_flag_clear(EXINT_LINE_13);
-	}
-}
+//void EXINT15_10_IRQHandler(void) {
+//	if (exint_flag_get(EXINT_LINE_13) != RESET) {
+//		irq_cntr = 1;
+//		exint_flag_clear(EXINT_LINE_13);
+//	}
+//}
 
 void get_gpio_sync(void) {
 	crm_periph_clock_enable(CRM_GPIOE_PERIPH_CLOCK, TRUE);
@@ -845,7 +848,7 @@ void pulse_set(void) {
 void TMR2_GLOBAL_IRQHandler(void) {
 	TMR2->ists = ~TMR_OVF_FLAG;
 
-	if(pulse_pin++ > 0)
+	if(pulse_pin++ > 1)
 		tmr_counter_enable(TMR2, FALSE);
 }
 
@@ -879,21 +882,26 @@ void pulse_cascade(void) {
 	tmr_param.occ_output_state = TRUE;
 	tmr_param.occ_polarity = TMR_OUTPUT_ACTIVE_HIGH;
 
+	uint32_t full_period = 114;
+
 	// Master
 	tmr_clock_source_div_set(TMR2, TMR_CLOCK_DIV1);
 	tmr_output_channel_config(TMR2, TMR_SELECT_CHANNEL_1, &tmr_param);
-	tmr_base_init(TMR2, 114, 0);
+	tmr_base_init(TMR2, full_period, 0);
 	tmr_cnt_dir_set(TMR2, TMR_COUNT_UP);
 	tmr_channel_value_set(TMR2, TMR_SELECT_CHANNEL_1, 1);
 
 	tmr_primary_mode_select(TMR2, TMR_PRIMARY_SEL_OVERFLOW);
 	tmr_sub_sync_mode_set(TMR2, TRUE);
 
+	uint32_t half_period = 55;
+	uint32_t fill_width = 5;
+
 	// PE3 Slave->Master
 	tmr_clock_source_div_set(TMR3, TMR_CLOCK_DIV1);
 	tmr_output_channel_config(TMR3, TMR_SELECT_CHANNEL_1, &tmr_param);
-	tmr_channel_value_set(TMR3, TMR_SELECT_CHANNEL_1, 20);
-	tmr_base_init(TMR3, 56, 0);
+	tmr_channel_value_set(TMR3, TMR_SELECT_CHANNEL_1, fill_width);
+	tmr_base_init(TMR3, half_period /*56*/, 0);
 	tmr_cnt_dir_set(TMR3, TMR_COUNT_UP);
 
 	tmr_sub_mode_select(TMR3, TMR_SUB_TRIGGER_MODE);
@@ -908,8 +916,8 @@ void pulse_cascade(void) {
 	// A0 Slave
 	tmr_clock_source_div_set(TMR5, TMR_CLOCK_DIV1);
 	tmr_output_channel_config(TMR5, TMR_SELECT_CHANNEL_1, &tmr_param);
-	tmr_channel_value_set(TMR5, TMR_SELECT_CHANNEL_1, 20);
-	tmr_base_init(TMR5, 56, 0);
+	tmr_channel_value_set(TMR5, TMR_SELECT_CHANNEL_1, fill_width);
+	tmr_base_init(TMR5, half_period /*56*/, 0);
 	tmr_cnt_dir_set(TMR5, TMR_COUNT_UP);
 
 	tmr_sub_mode_select(TMR5, TMR_SUB_TRIGGER_MODE);
@@ -949,12 +957,34 @@ void pulse_cascade(void) {
 	nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
 	nvic_irq_enable(TMR2_GLOBAL_IRQn, 1, 0);
 
-	while(1) {
-		delay_us(200);
-		pulse_pin = 0;
-		tmr_counter_enable(TMR2, TRUE);
+//	while(1) {
+//		delay_us(200);
+//		pulse_pin = 0;
+//		tmr_counter_enable(TMR2, TRUE);
+//	}
+}
+
+void EXINT15_10_IRQHandler(void) {
+	if (exint_flag_get(EXINT_LINE_13) != RESET) {
+		if (irq_cntr == 0) {
+			pulse_pin = 0;
+			//tmr_counter_value_set(TMR2, 0);
+			//tmr_counter_value_set(TMR4, 0);
+
+			tmr_counter_enable(TMR4, TRUE);
+
+			tmr_counter_enable(TMR2, TRUE);
+
+
+			nn = 0;
+			tmr_counter_enable(TMR1, TRUE);
+		}
+
+		irq_cntr = 1;
+		exint_flag_clear(EXINT_LINE_13);
 	}
 }
+
 
 /**
   * @brief  main function.
@@ -979,8 +1009,8 @@ int main(void) {
 
 	get_gpio_sync();
 
-	dac_tx_buf[0] = 0x1100;
-	dac_tx_buf[1] = 0x5100;
+	dac_tx_buf[0] = 0x1200;
+	dac_tx_buf[1] = 0x5200;
 	for(int i = 2; i < 1024; i++) {
 		dac_tx_buf[i] = i < 128 ? 0x1000 + i * 8 : 0x5000 + (i - 512) * 8;
 	}
@@ -988,8 +1018,15 @@ int main(void) {
 	test_dac_swcs();	// init VRC (DAC SPI)
 
 	test_timer();		// Send VRC from Timer Interrupt
+
 	//tmr_counter_enable(TMR1, TRUE);
 	//while(1);
+
+	test_adc();
+
+	nn = 0;
+	tmr_counter_enable(TMR1, TRUE);
+
 
 	uint16_t kk = 0;
 	while(1) {
@@ -1003,15 +1040,23 @@ int main(void) {
 		//delay_us(100);
 		while(!irq_cntr);
 
-		nn = 0;
-		tmr_counter_enable(TMR1, TRUE);
-		pulse_set();
-		test_adc();
+		//nn = 0;
+		//tmr_counter_enable(TMR1, TRUE);
+
+		//pulse_set();
+		//test_adc();
 		while(dma_flag_get(DMA1_FDT2_FLAG) == RESET);
 		tmr_counter_enable(TMR1, FALSE);
 
+		tmr_counter_enable(TMR4, FALSE);
+
+		test_adc();
+
 		for(int i = 0; i < 1024; i++) {
-			send_buf[i] = spi_tx_buf[i * 4];
+			send_buf[i] = spi_tx_buf[i];
+//			for (int n = 1; n < 4; n++)
+//				if (abs(send_buf[i] < spi_tx_buf[i * 4 + n]))
+//					send_buf[i] = -abs(spi_tx_buf[i * 4 + n]);
 			//send_buf[i] = i + kk;
 		}
 		kk++;
