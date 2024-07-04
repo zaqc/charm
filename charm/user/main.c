@@ -467,7 +467,6 @@ void TMR1_OVF_TMR10_IRQHandler(void) {
     GPIOD->clr = GPIO_PINS_0;
     //delay_us(1);
 
-
     spi_i2s_data_transmit(SPI2, val);
 }
 
@@ -556,7 +555,7 @@ void test_spi_ti_send(){	// Data Stream
 
 	dma_channel_enable(DMA1_CHANNEL4, TRUE);
 
-	while(dma_flag_get(DMA1_FDT4_FLAG) == RESET);
+	// while(dma_flag_get(DMA1_FDT4_FLAG) == RESET);
 
 	//delay_us(10);
 }
@@ -848,7 +847,7 @@ void pulse_set(void) {
 void TMR2_GLOBAL_IRQHandler(void) {
 	TMR2->ists = ~TMR_OVF_FLAG;
 
-	if(pulse_pin++ > 1)
+	if(pulse_pin++ > 0)
 		tmr_counter_enable(TMR2, FALSE);
 }
 
@@ -985,6 +984,67 @@ void EXINT15_10_IRQHandler(void) {
 	}
 }
 
+void ext_int(void) {
+	crm_periph_clock_enable(CRM_GPIOB_PERIPH_CLOCK, TRUE);
+	gpio_init_type gpio_param;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_pins = GPIO_PINS_8;
+	gpio_param.gpio_mode = GPIO_MODE_MUX;
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_pull = GPIO_PULL_UP;
+	gpio_init(GPIOB, &gpio_param);
+	gpio_pin_mux_config(GPIOB, GPIO_PINS_SOURCE8, GPIO_MUX_1);	// TMR2_CH1 TMR2_EXT
+
+	crm_periph_clock_enable(CRM_GPIOA_PERIPH_CLOCK, TRUE);	// TMR5_CH1
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_pins = GPIO_PINS_1;
+	gpio_param.gpio_mode = GPIO_MODE_MUX;
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_pull = GPIO_PULL_NONE;
+	gpio_init(GPIOA, &gpio_param);
+	gpio_pin_mux_config(GPIOA, GPIO_PINS_SOURCE1, GPIO_MUX_1);	// TMR2_CH2
+
+	gpio_param.gpio_mode = GPIO_MODE_OUTPUT;
+	gpio_param.gpio_pins = GPIO_PINS_2;
+	gpio_init(GPIOA, &gpio_param);
+
+	crm_periph_clock_enable(CRM_TMR2_PERIPH_CLOCK, TRUE);
+	tmr_base_init(TMR2, 114, 0);
+	tmr_cnt_dir_set(TMR2, TMR_COUNT_UP);
+	tmr_output_config_type tmr_param;
+	tmr_output_default_para_init(&tmr_param);
+	tmr_param.oc_mode = TMR_OUTPUT_CONTROL_PWM_MODE_A;
+	tmr_param.oc_output_state = TRUE;
+	tmr_param.oc_polarity = TMR_OUTPUT_ACTIVE_LOW;
+	tmr_param.oc_idle_state = TRUE;
+	tmr_param.occ_output_state = TRUE;
+	tmr_param.occ_polarity = TMR_OUTPUT_ACTIVE_LOW;
+	tmr_param.occ_idle_state = TRUE;
+	tmr_output_channel_config(TMR2, TMR_SELECT_CHANNEL_2, &tmr_param);
+	tmr_channel_value_set(TMR2, TMR_SELECT_CHANNEL_2, 56);	// set pulse width
+
+	tmr_sub_mode_select(TMR2, TMR_SUB_TRIGGER_MODE);
+	tmr_trigger_input_select(TMR2, TMR_SUB_INPUT_SEL_EXTIN);
+	//tmr_one_cycle_mode_enable(TMR2, TRUE);
+
+	tmr_output_enable(TMR2, TRUE);
+	tmr_counter_enable(TMR2, FALSE);
+
+	pulse_pin = 0;
+	tmr_interrupt_enable(TMR2, TMR_OVF_INT, TRUE);
+	nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
+	nvic_irq_enable(TMR2_GLOBAL_IRQn, 1, 0);
+
+	while(1) {
+		tmr_counter_value_set(TMR2, 0);
+		GPIOA->scr = GPIO_PINS_2;
+		delay_us(1);
+		GPIOA->clr = GPIO_PINS_2;
+		delay_us(100);
+		pulse_pin = 0;
+	}
+}
+
 
 /**
   * @brief  main function.
@@ -997,6 +1057,8 @@ int main(void) {
 	at32_board_init();
 
 	button_exint_init();
+
+	ext_int();
 
 	pulse_cascade();
 
