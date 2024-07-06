@@ -27,6 +27,8 @@
 #include "at32f435_437_board.h"
 #include "at32f435_437_clock.h"
 
+#include "adc.h"
+
 /** @addtogroup AT32F437_periph_template
   * @{
   */
@@ -243,14 +245,6 @@ void test_adc(void) {
 	//while(dma_flag_get(DMA1_FDT2_FLAG) == RESET);
 
 	//tmr_counter_enable(TMR4, FALSE);
-
-//	for (int i = 0; i < 1024; i++)
-//		spi_tx_buf[i] =  512 - (0x3FF & spi_tx_buf[i]);
-
-	//delay_us(10);
-
-	tmr_sub_mode_select(TMR4, TMR_SUB_TRIGGER_MODE);
-	tmr_trigger_input_select(TMR4, TMR_SUB_INPUT_SEL_IS1); // Slave: TMR4, Master: TMR2 -> Internal Synchro Channel: IS1 (Table 14-3)
 }
 
 uint16_t dac_tx_buf[1024];	// 4096
@@ -844,28 +838,28 @@ void pulse_set(void) {
  */
 }
 
-void TMR2_GLOBAL_IRQHandler(void) {
-	TMR2->ists = ~TMR_OVF_FLAG;
+void TMR3_GLOBAL_IRQHandler(void) {
+	TMR3->ists = ~TMR_OVF_FLAG;
 
-	if(pulse_pin++ > 0)
-		tmr_counter_enable(TMR2, FALSE);
+	if(pulse_pin++ > 1)
+		tmr_counter_enable(TMR3, FALSE);
 }
 
 void pulse_cascade(void) {
-	crm_periph_clock_enable(CRM_GPIOA_PERIPH_CLOCK, TRUE);	// TMR5_CH1
+	crm_periph_clock_enable(CRM_GPIOD_PERIPH_CLOCK, TRUE);	// TMR5_CH1
 	gpio_init_type gpio_param;
 	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
-	gpio_param.gpio_pins = GPIO_PINS_0;
+	gpio_param.gpio_pins = GPIO_PINS_2;
 	gpio_param.gpio_mode = GPIO_MODE_MUX;
 	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
 	gpio_param.gpio_pull = GPIO_PULL_NONE;
-	gpio_init(GPIOA, &gpio_param);
-	gpio_pin_mux_config(GPIOA, GPIO_PINS_SOURCE0, GPIO_MUX_2);
+	gpio_init(GPIOD, &gpio_param);
+	gpio_pin_mux_config(GPIOD, GPIO_PINS_SOURCE2, GPIO_MUX_2);
 
-	crm_periph_clock_enable(CRM_GPIOE_PERIPH_CLOCK, TRUE);	// TMR3_CH1
-	gpio_param.gpio_pins = GPIO_PINS_3;
-	gpio_init(GPIOE, &gpio_param);
-	gpio_pin_mux_config(GPIOE, GPIO_PINS_SOURCE3, GPIO_MUX_2);
+	crm_periph_clock_enable(CRM_GPIOA_PERIPH_CLOCK, TRUE);	// TMR3_CH1
+	gpio_param.gpio_pins = GPIO_PINS_0;
+	gpio_init(GPIOA, &gpio_param);
+	gpio_pin_mux_config(GPIOA, GPIO_PINS_SOURCE0, GPIO_MUX_1);
 
 	crm_periph_clock_enable(CRM_TMR2_PERIPH_CLOCK, TRUE);
 	crm_periph_clock_enable(CRM_TMR3_PERIPH_CLOCK, TRUE);
@@ -884,33 +878,33 @@ void pulse_cascade(void) {
 	uint32_t full_period = 114;
 
 	// Master
-	tmr_clock_source_div_set(TMR2, TMR_CLOCK_DIV1);
-	tmr_output_channel_config(TMR2, TMR_SELECT_CHANNEL_1, &tmr_param);
-	tmr_base_init(TMR2, full_period, 0);
-	tmr_cnt_dir_set(TMR2, TMR_COUNT_UP);
-	tmr_channel_value_set(TMR2, TMR_SELECT_CHANNEL_1, 1);
+	tmr_clock_source_div_set(TMR3, TMR_CLOCK_DIV1);
+	tmr_output_channel_config(TMR3, TMR_SELECT_CHANNEL_1, &tmr_param);
+	tmr_base_init(TMR3, full_period, 0);
+	tmr_cnt_dir_set(TMR3, TMR_COUNT_UP);
+	tmr_channel_value_set(TMR3, TMR_SELECT_CHANNEL_1, 1);
 
-	tmr_primary_mode_select(TMR2, TMR_PRIMARY_SEL_OVERFLOW);
-	tmr_sub_sync_mode_set(TMR2, TRUE);
+	tmr_primary_mode_select(TMR3, TMR_PRIMARY_SEL_OVERFLOW);
+	tmr_sub_sync_mode_set(TMR3, TRUE);
 
 	uint32_t half_period = 55;
 	uint32_t fill_width = 5;
 
 	// PE3 Slave->Master
-	tmr_clock_source_div_set(TMR3, TMR_CLOCK_DIV1);
-	tmr_output_channel_config(TMR3, TMR_SELECT_CHANNEL_1, &tmr_param);
-	tmr_channel_value_set(TMR3, TMR_SELECT_CHANNEL_1, fill_width);
-	tmr_base_init(TMR3, half_period /*56*/, 0);
-	tmr_cnt_dir_set(TMR3, TMR_COUNT_UP);
+	tmr_clock_source_div_set(TMR2, TMR_CLOCK_DIV1);
+	tmr_output_channel_config(TMR2, TMR_SELECT_CHANNEL_1, &tmr_param);
+	tmr_channel_value_set(TMR2, TMR_SELECT_CHANNEL_1, fill_width);
+	tmr_base_init(TMR2, half_period /*56*/, 0);
+	tmr_cnt_dir_set(TMR2, TMR_COUNT_UP);
 
-	tmr_sub_mode_select(TMR3, TMR_SUB_TRIGGER_MODE);
-	tmr_trigger_input_select(TMR3, TMR_SUB_INPUT_SEL_IS1);
+	tmr_sub_mode_select(TMR2, TMR_SUB_TRIGGER_MODE);
+	tmr_trigger_input_select(TMR2, TMR_SUB_INPUT_SEL_IS2);	// TMR3 start TMR2 == IS2
 
-	tmr_primary_mode_select(TMR3, TMR_PRIMARY_SEL_OVERFLOW);
-	tmr_sub_sync_mode_set(TMR3, TRUE);
+	tmr_primary_mode_select(TMR2, TMR_PRIMARY_SEL_OVERFLOW);
+	tmr_sub_sync_mode_set(TMR2, TRUE);
 
-	tmr_one_cycle_mode_enable(TMR3, TRUE);
-	tmr_output_channel_mode_select(TMR3, TMR_SELECT_CHANNEL_1, TMR_OUTPUT_CONTROL_PWM_MODE_A);
+	tmr_one_cycle_mode_enable(TMR2, TRUE);
+	tmr_output_channel_mode_select(TMR2, TMR_SELECT_CHANNEL_1, TMR_OUTPUT_CONTROL_PWM_MODE_A);
 
 	// A0 Slave
 	tmr_clock_source_div_set(TMR5, TMR_CLOCK_DIV1);
@@ -920,7 +914,7 @@ void pulse_cascade(void) {
 	tmr_cnt_dir_set(TMR5, TMR_COUNT_UP);
 
 	tmr_sub_mode_select(TMR5, TMR_SUB_TRIGGER_MODE);
-	tmr_trigger_input_select(TMR5, TMR_SUB_INPUT_SEL_IS1);
+	tmr_trigger_input_select(TMR5, TMR_SUB_INPUT_SEL_IS0);	// TMR2 start TMR5 == IS0
 
 	tmr_one_cycle_mode_enable(TMR5, TRUE);
 	tmr_output_channel_mode_select(TMR5, TMR_SELECT_CHANNEL_1, TMR_OUTPUT_CONTROL_PWM_MODE_A);
@@ -951,10 +945,10 @@ void pulse_cascade(void) {
 	tmr_counter_enable(TMR5, TRUE);
 
 //	pulse_pin = 0;
-	tmr_interrupt_enable(TMR2, TMR_OVF_INT, TRUE);
+	//tmr_interrupt_enable(TMR2, TMR_OVF_INT, TRUE);
 //
-	nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
-	nvic_irq_enable(TMR2_GLOBAL_IRQn, 1, 0);
+	//nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
+	//nvic_irq_enable(TMR2_GLOBAL_IRQn, 1, 0);
 
 //	while(1) {
 //		delay_us(200);
@@ -974,7 +968,6 @@ void EXINT15_10_IRQHandler(void) {
 
 			tmr_counter_enable(TMR2, TRUE);
 
-
 			nn = 0;
 			tmr_counter_enable(TMR1, TRUE);
 		}
@@ -991,7 +984,7 @@ void ext_int(void) {
 	gpio_param.gpio_pins = GPIO_PINS_8;
 	gpio_param.gpio_mode = GPIO_MODE_MUX;
 	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
-	gpio_param.gpio_pull = GPIO_PULL_UP;
+	gpio_param.gpio_pull = GPIO_PULL_NONE;
 	gpio_init(GPIOB, &gpio_param);
 	gpio_pin_mux_config(GPIOB, GPIO_PINS_SOURCE8, GPIO_MUX_1);	// TMR2_CH1 TMR2_EXT
 
@@ -1005,12 +998,13 @@ void ext_int(void) {
 	gpio_pin_mux_config(GPIOA, GPIO_PINS_SOURCE1, GPIO_MUX_1);	// TMR2_CH2
 
 	gpio_param.gpio_mode = GPIO_MODE_OUTPUT;
+	gpio_param.gpio_pull = GPIO_PULL_UP;
 	gpio_param.gpio_pins = GPIO_PINS_2;
 	gpio_init(GPIOA, &gpio_param);
 
-	crm_periph_clock_enable(CRM_TMR2_PERIPH_CLOCK, TRUE);
-	tmr_base_init(TMR2, 114, 0);
-	tmr_cnt_dir_set(TMR2, TMR_COUNT_UP);
+	crm_periph_clock_enable(CRM_TMR3_PERIPH_CLOCK, TRUE);
+	tmr_base_init(TMR3, 114, 0);
+	tmr_cnt_dir_set(TMR3, TMR_COUNT_UP);
 	tmr_output_config_type tmr_param;
 	tmr_output_default_para_init(&tmr_param);
 	tmr_param.oc_mode = TMR_OUTPUT_CONTROL_PWM_MODE_A;
@@ -1020,29 +1014,111 @@ void ext_int(void) {
 	tmr_param.occ_output_state = TRUE;
 	tmr_param.occ_polarity = TMR_OUTPUT_ACTIVE_LOW;
 	tmr_param.occ_idle_state = TRUE;
-	tmr_output_channel_config(TMR2, TMR_SELECT_CHANNEL_2, &tmr_param);
-	tmr_channel_value_set(TMR2, TMR_SELECT_CHANNEL_2, 56);	// set pulse width
+	tmr_output_channel_config(TMR3, TMR_SELECT_CHANNEL_2, &tmr_param);
+	tmr_channel_value_set(TMR3, TMR_SELECT_CHANNEL_2, 56);	// set pulse width
 
-	tmr_sub_mode_select(TMR2, TMR_SUB_TRIGGER_MODE);
-	tmr_trigger_input_select(TMR2, TMR_SUB_INPUT_SEL_EXTIN);
-	//tmr_one_cycle_mode_enable(TMR2, TRUE);
+	tmr_sub_mode_select(TMR3, TMR_SUB_TRIGGER_MODE);
+	tmr_trigger_input_select(TMR3, TMR_SUB_INPUT_SEL_EXTIN);
+	tmr_one_cycle_mode_enable(TMR3, FALSE);
 
-	tmr_output_enable(TMR2, TRUE);
-	tmr_counter_enable(TMR2, FALSE);
+	tmr_output_enable(TMR3, TRUE);
+	tmr_counter_enable(TMR3, TRUE);
 
 	pulse_pin = 0;
-	tmr_interrupt_enable(TMR2, TMR_OVF_INT, TRUE);
+	tmr_interrupt_enable(TMR3, TMR_OVF_INT, TRUE);
 	nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
-	nvic_irq_enable(TMR2_GLOBAL_IRQn, 1, 0);
+	nvic_irq_enable(TMR3_GLOBAL_IRQn, 1, 0);
+
+
+
+
+
+//	uint32_t half_period = 55;
+//	uint32_t fill_width = 5;
+//
+//	// PE3 Slave->Master
+//	tmr_clock_source_div_set(TMR3, TMR_CLOCK_DIV1);
+//	tmr_output_channel_config(TMR3, TMR_SELECT_CHANNEL_1, &tmr_param);
+//	tmr_channel_value_set(TMR3, TMR_SELECT_CHANNEL_1, fill_width);
+//	tmr_base_init(TMR3, half_period /*56*/, 0);
+//	tmr_cnt_dir_set(TMR3, TMR_COUNT_UP);
+//
+//	tmr_sub_mode_select(TMR3, TMR_SUB_TRIGGER_MODE);
+//	tmr_trigger_input_select(TMR3, TMR_SUB_INPUT_SEL_IS1);
+//
+//	tmr_primary_mode_select(TMR3, TMR_PRIMARY_SEL_OVERFLOW);
+//	tmr_sub_sync_mode_set(TMR3, TRUE);
+//
+//	tmr_one_cycle_mode_enable(TMR3, TRUE);
+//	tmr_output_channel_mode_select(TMR3, TMR_SELECT_CHANNEL_1, TMR_OUTPUT_CONTROL_PWM_MODE_A);
+//
+//	// A0 Slave
+//	tmr_clock_source_div_set(TMR5, TMR_CLOCK_DIV1);
+//	tmr_output_channel_config(TMR5, TMR_SELECT_CHANNEL_1, &tmr_param);
+//	tmr_channel_value_set(TMR5, TMR_SELECT_CHANNEL_1, fill_width);
+//	tmr_base_init(TMR5, half_period /*56*/, 0);
+//	tmr_cnt_dir_set(TMR5, TMR_COUNT_UP);
+//
+//	tmr_sub_mode_select(TMR5, TMR_SUB_TRIGGER_MODE);
+//	tmr_trigger_input_select(TMR5, TMR_SUB_INPUT_SEL_IS1);
+//
+//	tmr_one_cycle_mode_enable(TMR5, TRUE);
+//	tmr_output_channel_mode_select(TMR5, TMR_SELECT_CHANNEL_1, TMR_OUTPUT_CONTROL_PWM_MODE_A);
+
 
 	while(1) {
+		// tmr_counter_value_set(TMR4, 0);	// ADC Clock Timer
+
+		tmr_counter_value_set(TMR3, 0);
+
 		tmr_counter_value_set(TMR2, 0);
+		tmr_counter_value_set(TMR5, 0);
+
+
 		GPIOA->scr = GPIO_PINS_2;
-		delay_us(1);
+		__asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP"); __asm("NOP");
 		GPIOA->clr = GPIO_PINS_2;
 		delay_us(100);
 		pulse_pin = 0;
 	}
+}
+
+
+
+
+void event_dma(void) {
+	crm_periph_clock_enable(CRM_GPIOB_PERIPH_CLOCK, TRUE);
+
+	gpio_init_type gpio_param = { 0 };
+	gpio_param.gpio_pins = GPIO_PINS_9;
+	gpio_param.gpio_mode = GPIO_MODE_INPUT;
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_pull = GPIO_PULL_NONE;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_init(GPIOB, &gpio_param);
+
+	scfg_exint_line_config(SCFG_PORT_SOURCE_GPIOB, SCFG_PINS_SOURCE9);
+
+	exint_init_type exint_param;
+	exint_default_para_init(&exint_param);
+	exint_param.line_enable = TRUE;
+	exint_param.line_mode = EXINT_LINE_INTERRUPUT;
+	exint_param.line_select = EXINT_LINE_1;
+	exint_param.line_polarity = EXINT_TRIGGER_RISING_EDGE;
+	exint_init(&exint_param);
+
+	dmamux_sync_init_type  dmamux_param;
+	dmamux_sync_default_para_init(&dmamux_param);
+	dmamux_param.sync_request_number = 4096;
+	dmamux_param.sync_signal_sel = DMAMUX_SYNC_ID_EXINT1;
+	dmamux_param.sync_polarity = DMAMUX_SYNC_POLARITY_RISING;
+	dmamux_param.sync_event_enable = TRUE;
+	dmamux_param.sync_enable = TRUE;
+	dmamux_sync_config(DMA2MUX_CHANNEL4, &dmamux_param);
+
+	/* exint line1 interrupt nvic init */
+	nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
+	nvic_irq_enable(EXINT1_IRQn, 1, 0);
 }
 
 
@@ -1058,9 +1134,13 @@ int main(void) {
 
 	button_exint_init();
 
+	pulse_cascade();
+
+	init_adc_tmr();
+	init_adc_dma();
+
 	ext_int();
 
-	pulse_cascade();
 
 //	while (1) {
 //		pulse_set();
