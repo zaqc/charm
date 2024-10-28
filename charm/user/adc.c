@@ -15,12 +15,6 @@ uint32_t adc_buf[ADC_BUF_SIZE];
 uint32_t *adc_buf_ptr = adc_buf;
 dma_init_type adc_dma_param = { 0 };
 
-void EXINT1_IRQHandler(void) {
-	if (exint_flag_get(EXINT_LINE_1) != RESET) {
-		exint_flag_clear(EXINT_LINE_1);
-	}
-}
-
 void init_adc_tmr(void) {
 	crm_periph_clock_enable(CRM_GPIOA_PERIPH_CLOCK, TRUE);
 	crm_periph_clock_enable(CRM_GPIOB_PERIPH_CLOCK, TRUE);
@@ -120,7 +114,6 @@ void init_adc_dma(void) {
 	gpio_init(GPIOE, &gpio_param);
 	gpio_pin_mux_config(GPIOE, GPIO_PINS_SOURCE0, GPIO_MUX_2);	// TMR4_EXT
 
-
 	tmr_sub_mode_select(TMR4, TMR_SUB_RESET_MODE);
 	tmr_trigger_input_select(TMR4, TMR_SUB_INPUT_SEL_EXTIN);
 
@@ -162,12 +155,7 @@ void init_adc_dma(void) {
 	dmamux_init(DMA1MUX_CHANNEL2, DMAMUX_DMAREQ_ID_TMR4_CH1);
 	dma_channel_enable(DMA1_CHANNEL2, TRUE);
 
-	/* exint line1 interrupt nvic init */
-	nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
-	nvic_irq_enable(EXINT1_IRQn, 1, 0);
-
 	tmr_counter_enable(TMR4, TRUE);
-
 }
 //----------------------------------------------------------------------------
 

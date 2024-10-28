@@ -8,8 +8,8 @@
 #include "at32f435_437_board.h"
 #include "at32f435_437_clock.h"
 
-void init_pulse_tmr(void) {
-	crm_periph_clock_enable(CRM_GPIOD_PERIPH_CLOCK, TRUE);	// TMR5_CH1
+void init_pulse_pio(void) {
+	crm_periph_clock_enable(CRM_GPIOD_PERIPH_CLOCK, TRUE);	// PD2 MUX2 TMR3_EXT
 	gpio_init_type gpio_param;
 	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
 	gpio_param.gpio_pins = GPIO_PINS_2;
@@ -19,7 +19,63 @@ void init_pulse_tmr(void) {
 	gpio_init(GPIOD, &gpio_param);
 	gpio_pin_mux_config(GPIOD, GPIO_PINS_SOURCE2, GPIO_MUX_2);
 
-	crm_periph_clock_enable(CRM_GPIOA_PERIPH_CLOCK, TRUE);	// TMR3_CH1
+	crm_periph_clock_enable(CRM_GPIOA_PERIPH_CLOCK, TRUE);		// TMR5_CH1
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_pins = GPIO_PINS_1;
+	gpio_param.gpio_mode = GPIO_MODE_MUX;
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_pull = GPIO_PULL_NONE;
+	gpio_init(GPIOA, &gpio_param);
+	gpio_pin_mux_config(GPIOA, GPIO_PINS_SOURCE1, GPIO_MUX_1);	// TMR2_CH2
+
+	gpio_param.gpio_mode = GPIO_MODE_OUTPUT;
+	gpio_param.gpio_pull = GPIO_PULL_UP;
+	gpio_param.gpio_pins = GPIO_PINS_2;
+	gpio_init(GPIOA, &gpio_param);
+
+	crm_periph_clock_enable(CRM_TMR3_PERIPH_CLOCK, TRUE);
+	tmr_base_init(TMR3, 114, 0);
+	tmr_cnt_dir_set(TMR3, TMR_COUNT_UP);
+	tmr_output_config_type tmr_param;
+	tmr_output_default_para_init(&tmr_param);
+	tmr_param.oc_mode = TMR_OUTPUT_CONTROL_PWM_MODE_A;
+	tmr_param.oc_output_state = TRUE;
+	tmr_param.oc_polarity = TMR_OUTPUT_ACTIVE_LOW;
+	tmr_param.oc_idle_state = TRUE;
+	tmr_param.occ_output_state = TRUE;
+	tmr_param.occ_polarity = TMR_OUTPUT_ACTIVE_LOW;
+	tmr_param.occ_idle_state = TRUE;
+	tmr_output_channel_config(TMR3, TMR_SELECT_CHANNEL_2, &tmr_param);
+	tmr_channel_value_set(TMR3, TMR_SELECT_CHANNEL_2, 56);	// set pulse width
+
+	tmr_sub_mode_select(TMR3, TMR_SUB_TRIGGER_MODE);
+	tmr_trigger_input_select(TMR3, TMR_SUB_INPUT_SEL_EXTIN);
+	tmr_one_cycle_mode_enable(TMR3, FALSE);
+
+	tmr_output_enable(TMR3, TRUE);
+	tmr_counter_enable(TMR3, TRUE);
+}
+
+volatile uint32_t pulse_count = 0;
+void TMR3_GLOBAL_IRQHandler(void) {
+	TMR3->ists = ~TMR_OVF_FLAG;
+
+	if(pulse_count++ > 1)
+		tmr_counter_enable(TMR3, FALSE);
+}
+
+void init_pulse_tmr(void) {
+	crm_periph_clock_enable(CRM_GPIOD_PERIPH_CLOCK, TRUE);	// TMR5_CH1 on PD2
+	gpio_init_type gpio_param;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_pins = GPIO_PINS_2;
+	gpio_param.gpio_mode = GPIO_MODE_MUX;
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_pull = GPIO_PULL_NONE;
+	gpio_init(GPIOD, &gpio_param);
+	gpio_pin_mux_config(GPIOD, GPIO_PINS_SOURCE2, GPIO_MUX_2);
+
+	crm_periph_clock_enable(CRM_GPIOA_PERIPH_CLOCK, TRUE);	// TMR3_CH1 on PA0
 	gpio_param.gpio_pins = GPIO_PINS_0;
 	gpio_init(GPIOA, &gpio_param);
 	gpio_pin_mux_config(GPIOA, GPIO_PINS_SOURCE0, GPIO_MUX_1);
@@ -113,4 +169,8 @@ void init_pulse_tmr(void) {
 	//nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
 	//nvic_irq_enable(TMR2_GLOBAL_IRQn, 1, 0);
 
+	pulse_count = 0;
+	tmr_interrupt_enable(TMR3, TMR_OVF_INT, TRUE);
+	nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
+	nvic_irq_enable(TMR3_GLOBAL_IRQn, 1, 0);
 }
