@@ -438,31 +438,31 @@ void test_dac_swcs(void) {
 
 }
 
-int nn = 0;
-void TMR1_OVF_TMR10_IRQHandler(void) {
-	tmr_flag_clear(TMR1, TMR_OVF_FLAG);
-
-
-	GPIOD->scr = GPIO_PINS_0;
-	//delay_us(1);
-
-	GPIOD->scr = GPIO_PINS_3;
-	//delay_us(1);
-
-	uint16_t val = dac_tx_buf[nn++];
-
-	//nn += nn > 1 ? 6 : 1;
-
-	if(nn >= 1024) nn = 1023;
-
-	GPIOD->clr = GPIO_PINS_3;
-	//delay_us(1);
-
-    GPIOD->clr = GPIO_PINS_0;
-    //delay_us(1);
-
-    spi_i2s_data_transmit(SPI2, val);
-}
+//int nn = 0;
+//void TMR1_OVF_TMR10_IRQHandler(void) {
+//	tmr_flag_clear(TMR1, TMR_OVF_FLAG);
+//
+//
+//	GPIOD->scr = GPIO_PINS_0;
+//	//delay_us(1);
+//
+//	GPIOD->scr = GPIO_PINS_3;
+//	//delay_us(1);
+//
+//	uint16_t val = dac_tx_buf[nn++];
+//
+//	//nn += nn > 1 ? 6 : 1;
+//
+//	if(nn >= 1024) nn = 1023;
+//
+//	GPIOD->clr = GPIO_PINS_3;
+//	//delay_us(1);
+//
+//    GPIOD->clr = GPIO_PINS_0;
+//    //delay_us(1);
+//
+//    spi_i2s_data_transmit(SPI2, val);
+//}
 
 void test_timer(void) {
 	crm_periph_clock_enable(CRM_GPIOD_PERIPH_CLOCK, TRUE);
@@ -968,7 +968,7 @@ void EXINT15_10_IRQHandler(void) {
 
 			tmr_counter_enable(TMR2, TRUE);
 
-			nn = 0;
+			//nn = 0;
 			tmr_counter_enable(TMR1, TRUE);
 		}
 
@@ -1121,6 +1121,7 @@ void event_dma(void) {
 //	nvic_irq_enable(EXINT1_IRQn, 1, 0);
 }
 
+void internal_sync_init();
 
 /**
   * @brief  main function.
@@ -1133,6 +1134,14 @@ int main(void) {
 	at32_board_init();
 
 	button_exint_init();
+
+	init_adc_tmr();
+	init_adc_dma();
+
+	internal_sync_init();
+	while (1) {
+		delay_us(200);
+	}
 
 	pulse_cascade();
 
@@ -1166,7 +1175,7 @@ int main(void) {
 
 	test_adc();
 
-	nn = 0;
+	//nn = 0;
 	tmr_counter_enable(TMR1, TRUE);
 
 

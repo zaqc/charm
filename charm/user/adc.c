@@ -43,6 +43,9 @@ void init_adc_tmr(void) {
 	tmr_base_init(TMR4, 10, 0);
 	tmr_cnt_dir_set(TMR4, TMR_COUNT_UP);
 
+	tmr_sub_mode_select(TMR4, TMR_SUB_TRIGGER_MODE);
+	tmr_trigger_input_select(TMR4, TMR_SUB_INPUT_SEL_IS0);	// IS0 - start TMR4 by TMR1_Ovf
+
 	/* channel 3 configuration in output mode */
 	tmr_output_config_type tmr_param;
 	tmr_output_default_para_init(&tmr_param);
@@ -64,25 +67,24 @@ void DMA1_Channel2_IRQHandler(void) {
 	dma_flag_clear(DMA1_FDT2_FLAG);
 	adc_dma_rdy_cntr++;
 
-	dmamux_sync_init_type  dmamux_param;
-	dmamux_sync_default_para_init(&dmamux_param);
-	dmamux_param.sync_request_number = 4096;
-	dmamux_param.sync_signal_sel = DMAMUX_SYNC_ID_EXINT1;
-	dmamux_param.sync_polarity = DMAMUX_SYNC_POLARITY_RISING;
-	dmamux_param.sync_event_enable = TRUE;
-	dmamux_param.sync_enable = TRUE;
-	dmamux_sync_config(DMA1MUX_CHANNEL2, &dmamux_param);
+	tmr_counter_enable(TMR4, FALSE);
+
+	dma_reset(DMA1_CHANNEL2);
+	dma_init(DMA1_CHANNEL2, &adc_dma_param);
+
+	tmr_dma_request_enable(TMR4, TMR_C1_DMA_REQUEST, TRUE);
 
 	dmamux_enable(DMA1, TRUE);
 	dmamux_init(DMA1MUX_CHANNEL2, DMAMUX_DMAREQ_ID_TMR4_CH1);
 	dma_channel_enable(DMA1_CHANNEL2, TRUE);
 
+	dma_interrupt_enable(DMA1_CHANNEL2, DMA_FDT_INT, TRUE);
 }
 
 void init_adc_dma(void) {
 	crm_periph_clock_enable(CRM_DMA1_PERIPH_CLOCK, TRUE);
 	dma_reset(DMA1_CHANNEL2);
-	adc_dma_param.buffer_size = 4096; //1024;
+	adc_dma_param.buffer_size = 256; //1024;
 	adc_dma_param.direction = DMA_DIR_PERIPHERAL_TO_MEMORY;
 	adc_dma_param.memory_base_addr = (uint32_t) adc_buf;
 	adc_dma_param.memory_data_width = DMA_MEMORY_DATA_WIDTH_HALFWORD;
@@ -114,8 +116,10 @@ void init_adc_dma(void) {
 	gpio_init(GPIOE, &gpio_param);
 	gpio_pin_mux_config(GPIOE, GPIO_PINS_SOURCE0, GPIO_MUX_2);	// TMR4_EXT
 
-	tmr_sub_mode_select(TMR4, TMR_SUB_RESET_MODE);
-	tmr_trigger_input_select(TMR4, TMR_SUB_INPUT_SEL_EXTIN);
+	tmr_sub_mode_select(TMR4, TMR_SUB_TRIGGER_MODE);
+	tmr_trigger_input_select(TMR4, TMR_SUB_INPUT_SEL_IS0);
+	//tmr_one_cycle_mode_enable(TMR4, TRUE);
+	//tmr_trigger_input_select(TMR4, TMR_SUB_INPUT_SEL_EXTIN);
 
 	dma_interrupt_enable(DMA1_CHANNEL2, DMA_FDT_INT, TRUE);
 
@@ -124,36 +128,38 @@ void init_adc_dma(void) {
 
 	/* Exint Line 1 on Pin B9 */
 	//gpio_init_type gpio_param;
-	gpio_default_para_init(&gpio_param);
-	gpio_param.gpio_pins = GPIO_PINS_9;
-	gpio_param.gpio_mode = GPIO_MODE_INPUT;
-	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
-	gpio_param.gpio_pull = GPIO_PULL_NONE;
-	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
-	gpio_init(GPIOB, &gpio_param);
-
-	scfg_exint_line_config(SCFG_PORT_SOURCE_GPIOB, SCFG_PINS_SOURCE9);
-
-	exint_init_type exint_param;
-	exint_default_para_init(&exint_param);
-	exint_param.line_enable = TRUE;
-	exint_param.line_mode = EXINT_LINE_INTERRUPUT;
-	exint_param.line_select = EXINT_LINE_1;
-	exint_param.line_polarity = EXINT_TRIGGER_RISING_EDGE;
-	exint_init(&exint_param);
-
-	dmamux_sync_init_type  dmamux_param;
-	dmamux_sync_default_para_init(&dmamux_param);
-	dmamux_param.sync_request_number = 4096;
-	dmamux_param.sync_signal_sel = DMAMUX_SYNC_ID_EXINT1;
-	dmamux_param.sync_polarity = DMAMUX_SYNC_POLARITY_RISING;
-	dmamux_param.sync_event_enable = TRUE;
-	dmamux_param.sync_enable = TRUE;
-	dmamux_sync_config(DMA1MUX_CHANNEL2, &dmamux_param);
+//	gpio_default_para_init(&gpio_param);
+//	gpio_param.gpio_pins = GPIO_PINS_9;
+//	gpio_param.gpio_mode = GPIO_MODE_INPUT;
+//	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+//	gpio_param.gpio_pull = GPIO_PULL_NONE;
+//	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+//	gpio_init(GPIOB, &gpio_param);
+//
+//	scfg_exint_line_config(SCFG_PORT_SOURCE_GPIOB, SCFG_PINS_SOURCE9);
+//
+//	exint_init_type exint_param;
+//	exint_default_para_init(&exint_param);
+//	exint_param.line_enable = TRUE;
+//	exint_param.line_mode = EXINT_LINE_INTERRUPUT;
+//	exint_param.line_select = EXINT_LINE_1;
+//	exint_param.line_polarity = EXINT_TRIGGER_RISING_EDGE;
+//	exint_init(&exint_param);
+//
+//	dmamux_sync_init_type  dmamux_param;
+//	dmamux_sync_default_para_init(&dmamux_param);
+//	dmamux_param.sync_request_number = 4096;
+//	dmamux_param.sync_signal_sel = DMAMUX_SYNC_ID_EXINT1;
+//	dmamux_param.sync_polarity = DMAMUX_SYNC_POLARITY_RISING;
+//	dmamux_param.sync_event_enable = TRUE;
+//	dmamux_param.sync_enable = TRUE;
+//	dmamux_sync_config(DMA1MUX_CHANNEL2, &dmamux_param);
 
 	dmamux_enable(DMA1, TRUE);
 	dmamux_init(DMA1MUX_CHANNEL2, DMAMUX_DMAREQ_ID_TMR4_CH1);
 	dma_channel_enable(DMA1_CHANNEL2, TRUE);
+
+	tmr_dma_request_enable(TMR4, TMR_C1_DMA_REQUEST, TRUE);
 
 	tmr_counter_enable(TMR4, TRUE);
 }
