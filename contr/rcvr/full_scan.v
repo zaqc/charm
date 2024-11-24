@@ -13,29 +13,45 @@ module full_scan(
 	input						i_st_rdy
 );
 
-	wire		[15:0]			r_data;
-	wire						r_vld;
-
-	rcvr rcvr_u0(
-		.i_clk(rcv_clk),
-		.i_fs(i_rcv_fs),
-		.i_d(i_rcv_data),
-		
-		.o_data(r_data),
-		.o_vld(r_vld)
-	);
+//	wire		[15:0]			r_data;
+//	wire						r_vld;
+//
+//	rcvr rcvr_u0(
+//		.i_clk(rcv_clk),
+//		.i_fs(i_rcv_fs),
+//		.i_d(i_rcv_data),
+//		
+//		.o_data(r_data),
+//		.o_vld(r_vld)
+//	);
 	
 	wire		[31:0]			adc_data;
 	wire						adc_vld;
-	
-	pack_adc pack_adc_u0(
+	wire						st_done;
+	wire						crc_ok;
+
+	decode_pkt decode_pkt_u0(
 		.rst_n(rst_n),
 		.clk(rcv_clk),
-		.i_adc_data(r_data[9:0]),
-		.i_adc_vld(r_vld),
-		.o_out_data(adc_data),
-		.o_out_vld(adc_vld)
+		
+		.i_rcv_fs(i_rcv_fs),
+		.i_rcv_data(i_rcv_data),
+		
+		.o_st_data(adc_data),
+		.o_st_vld(adc_vld),
+		
+		//.o_st_done(st_done),
+		.o_pkt_crc_ok(crc_ok)
 	);
+		
+//	pack_adc pack_adc_u0(
+//		.rst_n(rst_n),
+//		.clk(rcv_clk),
+//		.i_adc_data(r_data[9:0]),
+//		.i_adc_vld(r_vld),
+//		.o_out_data(adc_data),
+//		.o_out_vld(adc_vld)
+//	);
 	
 	reg			[12:0]			wr_ptr;
 	reg			[0:0]			wr_half;

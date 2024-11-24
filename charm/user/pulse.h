@@ -10,6 +10,7 @@
 
 extern volatile uint32_t pulse_count;
 
+void init_pulse_pio(void);
 void init_pulse_tmr(void);
 
 #endif /* USER_PULSE_H_ */

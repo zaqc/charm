@@ -62,12 +62,16 @@ void init_adc_tmr(void) {
 }
 //----------------------------------------------------------------------------
 
+extern volatile uint32_t pulse_count;
+
 volatile uint32_t adc_dma_rdy_cntr = 0;
 void DMA1_Channel2_IRQHandler(void) {
 	dma_flag_clear(DMA1_FDT2_FLAG);
 	adc_dma_rdy_cntr++;
 
 	tmr_counter_enable(TMR4, FALSE);
+
+	pulse_count = 0;
 
 	dma_reset(DMA1_CHANNEL2);
 	dma_init(DMA1_CHANNEL2, &adc_dma_param);
@@ -84,7 +88,7 @@ void DMA1_Channel2_IRQHandler(void) {
 void init_adc_dma(void) {
 	crm_periph_clock_enable(CRM_DMA1_PERIPH_CLOCK, TRUE);
 	dma_reset(DMA1_CHANNEL2);
-	adc_dma_param.buffer_size = 256; //1024;
+	adc_dma_param.buffer_size = 4096; //1024;
 	adc_dma_param.direction = DMA_DIR_PERIPHERAL_TO_MEMORY;
 	adc_dma_param.memory_base_addr = (uint32_t) adc_buf;
 	adc_dma_param.memory_data_width = DMA_MEMORY_DATA_WIDTH_HALFWORD;
