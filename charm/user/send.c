@@ -33,29 +33,42 @@ void pkt_envelop(uint16_t *in_data, uint16_t *out_data, uint16_t len,
 	}
 }
 
+#define	SWAP_HALF_WORD(a)	(((uint32_t)(a) << 16) & 0xFFFF0000) | ((uint32_t)(a) >> 16)
+
 int16_t pkt_pack(uint16_t *in_data, uint16_t *out_data, uint16_t len) {
 
-	register uint32_t pkt_crc = 0;
+	volatile register uint32_t pkt_crc = 0;
 
-	//crc_init_data_set(0xFFFFFFFF);
-	CRC->idt = 0xFFFFFFFF;
+	crc_data_reset();
+
+	crc_init_data_set(0xFFFFFFFF);
+
+	crc_reverse_input_data_set(CRC_REVERSE_INPUT_NO_AFFECTE);
+	crc_reverse_output_data_set(CRC_REVERSE_OUTPUT_NO_AFFECTE);
+
+	crc_init_data_set(0xFFFFFFFF);
+	//CRC->idt = 0xFFFFFFFF;
 
 	// Create Block Header
 	register uint8_t *out_ptr = (uint8_t*) out_data;
 	*(uint32_t*) out_ptr = PKT_MAGIC_ID;
-	CRC->dt = PKT_MAGIC_ID;
-	pkt_crc = CRC->dt; //crc_one_word_calculate(PKT_MAGIC_ID);
+	//CRC->dt = PKT_MAGIC_ID;
+	//pkt_crc = CRC->dt;
+	pkt_crc = crc_one_word_calculate(SWAP_HALF_WORD(PKT_MAGIC_ID)); //((PKT_MAGIC_ID << 16) & 0xFFFF0000) | (PKT_MAGIC_ID >> 16));
+
 	out_ptr += sizeof(uint32_t);
 
-	*(uint32_t*) out_ptr =  (((uint32_t) pkt_counter) << 16) | PKT_DATA_COUNT;
-	CRC->dt = *(uint32_t*) out_ptr;
-	pkt_crc = CRC->dt; //crc_one_word_calculate(*(uint32_t*) out_ptr);
+	*(uint32_t*) out_ptr = (((uint32_t) len) << 16) | pkt_counter;
+	//CRC->dt = *(uint32_t*) out_ptr;
+	//pkt_crc = CRC->dt; //
+	pkt_crc = crc_one_word_calculate(SWAP_HALF_WORD(*(uint32_t*) out_ptr));
 	out_ptr += sizeof(uint32_t);
 	pkt_counter++;
 
 	*(uint32_t*) out_ptr = pkt_crc;
-	CRC->dt = pkt_crc;
-	pkt_crc = CRC->dt; //crc_one_word_calculate(*(uint32_t*) out_ptr);
+	//CRC->dt = pkt_crc;
+	//pkt_crc = CRC->dt; //
+	pkt_crc = crc_one_word_calculate(SWAP_HALF_WORD(*(uint32_t*) out_ptr));
 	out_ptr += sizeof(uint32_t);
 
 	// Decode US Data
@@ -71,7 +84,7 @@ int16_t pkt_pack(uint16_t *in_data, uint16_t *out_data, uint16_t len) {
 		tmp <<= 10;
 		ptr++;
 		tmp |= *(uint16_t*) ptr;
-		pkt_crc = crc_one_word_calculate(tmp);
+		pkt_crc = crc_one_word_calculate(SWAP_HALF_WORD(tmp));
 		ptr++;
 		*(uint32_t*) out_ptr = tmp;
 		out_ptr += sizeof(uint32_t);
@@ -83,7 +96,7 @@ int16_t pkt_pack(uint16_t *in_data, uint16_t *out_data, uint16_t len) {
 	return (3/*hdr*/+ len + 1/*crc*/) * 2; // size in uint16_t for send by SPI (16 bit)
 }
 
-//uint16_t send_buf[4096];
+extern uint16_t send_buf[4096];
 
 void pkt_send(uint16_t *data, uint16_t len) {	// Data Stream
 	gpio_init_type gpio_param;
@@ -131,7 +144,7 @@ void pkt_send(uint16_t *data, uint16_t len) {	// Data Stream
 	spi_default_para_init(&spi_param);
 	spi_param.transmission_mode = SPI_TRANSMIT_HALF_DUPLEX_TX;
 	spi_param.master_slave_mode = SPI_MODE_MASTER;
-	spi_param.mclk_freq_division = SPI_MCLK_DIV_8;
+	spi_param.mclk_freq_division = SPI_MCLK_DIV_4;	// Main Clock / 2 / 4 = 36MHz
 	spi_param.first_bit_transmission = SPI_FIRST_BIT_MSB;
 	spi_param.frame_bit_num = SPI_FRAME_16BIT;
 	//spi_param.clock_polarity = SPI_CLOCK_POLARITY_LOW;
@@ -142,5 +155,20 @@ void pkt_send(uint16_t *data, uint16_t len) {	// Data Stream
 	spi_ti_mode_enable(SPI1, TRUE);
 	spi_enable(SPI1, TRUE);
 
+	//pkt_tx_rdy = 0;
+
+	dma_interrupt_enable(DMA1_CHANNEL4, DMA_FDT_INT, TRUE);
+
+	nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
+	nvic_irq_enable(DMA1_Channel4_IRQn, 1, 0);
+
 	dma_channel_enable(DMA1_CHANNEL4, TRUE);
+}
+
+volatile uint8_t pkt_tx_rdy = 1;
+void DMA1_Channel4_IRQHandler(void) {
+	if (dma_flag_get(DMA1_FDT4_FLAG) != RESET) {
+		dma_flag_clear(DMA1_FDT4_FLAG);
+		pkt_tx_rdy = 1;
+	}
 }

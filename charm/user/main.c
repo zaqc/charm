@@ -1120,7 +1120,7 @@ void event_dma(void) {
 
 void internal_sync_init();
 
-static uint32_t crc_table[256] = { 0x00000000, 0x04c11db7, 0x09823b6e,
+static const uint32_t crc_table[256] = { 0x00000000, 0x04c11db7, 0x09823b6e,
 		0x0d4326d9, 0x130476dc, 0x17c56b6b, 0x1a864db2, 0x1e475005, 0x2608edb8,
 		0x22c9f00f, 0x2f8ad6d6, 0x2b4bcb61, 0x350c9b64, 0x31cd86d3, 0x3c8ea00a,
 		0x384fbdbd, 0x4c11db70, 0x48d0c6c7, 0x4593e01e, 0x4152fda9, 0x5f15adac,
@@ -1183,24 +1183,38 @@ int main(void) {
 
 	button_exint_init();
 
-	uint16_t env_buf[1024];
-	pkt_envelop((uint16_t *)crc_table, env_buf, 10, 4);
-
-	uint16_t pk_buf[1024];
-	pkt_pack(env_buf, pk_buf, 10);
-
-	init_adc_tmr();
-	init_adc_dma();
-
-	init_pulse_pio();
-	init_pulse_tmr();
-
 	crm_periph_clock_enable(CRM_CRC_PERIPH_CLOCK, TRUE);
 	crc_data_reset();
 
 	crc_init_data_set(0xFFFFFFFF);
 
 	crc_reverse_input_data_set(CRC_REVERSE_INPUT_NO_AFFECTE);
+	crc_reverse_output_data_set(CRC_REVERSE_OUTPUT_NO_AFFECTE);
+
+	while (1) {
+		uint16_t env_buf[1024];
+		pkt_envelop((uint16_t*) crc_table, env_buf, 2, 4);
+
+		uint16_t pkt_buf[128];
+		uint16_t pkt_len = pkt_pack(env_buf, pkt_buf, 2);
+
+		while (1) {
+			__disable_irq();
+			uint8_t tx_rdy = pkt_tx_rdy;
+			pkt_tx_rdy = 0;
+			__enable_irq();
+			if (tx_rdy)
+				break;
+		}
+		pkt_send(pkt_buf, pkt_len);
+		crc_init_data_set(0xFFFFFFFF);
+	}
+
+	init_adc_tmr();
+	init_adc_dma();
+
+	init_pulse_pio();
+	init_pulse_tmr();
 
 	uint32_t c = crc(0xFFFFFFFF, 0x12);
 	c = crc(c, 0x34);
