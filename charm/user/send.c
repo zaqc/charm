@@ -33,7 +33,17 @@ void pkt_envelop(uint16_t *in_data, uint16_t *out_data, uint16_t len,
 	}
 }
 
-#define	SWAP_HALF_WORD(a)	(((uint32_t)(a) << 16) & 0xFFFF0000) | ((uint32_t)(a) >> 16)
+#define	SWAP_HALF_WORD(a)	(((uint32_t)(a) << 16) & 0xFFFF0000) | (((uint32_t)(a) >> 16) & 0xFFFF)
+
+inline uint32_t crc_calc(uint32_t data)
+{
+  CRC->dt = data;
+//  __asm("NOP");
+//  __asm("NOP");
+//  __asm("NOP");
+//  __asm("NOP");
+  return (CRC->dt);
+}
 
 int16_t pkt_pack(uint16_t *in_data, uint16_t *out_data, uint16_t len) {
 
@@ -54,21 +64,21 @@ int16_t pkt_pack(uint16_t *in_data, uint16_t *out_data, uint16_t len) {
 	*(uint32_t*) out_ptr = PKT_MAGIC_ID;
 	//CRC->dt = PKT_MAGIC_ID;
 	//pkt_crc = CRC->dt;
-	pkt_crc = crc_one_word_calculate(SWAP_HALF_WORD(PKT_MAGIC_ID)); //((PKT_MAGIC_ID << 16) & 0xFFFF0000) | (PKT_MAGIC_ID >> 16));
+	pkt_crc = crc_calc(SWAP_HALF_WORD(PKT_MAGIC_ID)); //((PKT_MAGIC_ID << 16) & 0xFFFF0000) | (PKT_MAGIC_ID >> 16));
 
 	out_ptr += sizeof(uint32_t);
 
 	*(uint32_t*) out_ptr = (((uint32_t) len) << 16) | pkt_counter;
 	//CRC->dt = *(uint32_t*) out_ptr;
 	//pkt_crc = CRC->dt; //
-	pkt_crc = crc_one_word_calculate(SWAP_HALF_WORD(*(uint32_t*) out_ptr));
+	pkt_crc = crc_calc(SWAP_HALF_WORD(*(uint32_t*) out_ptr));
 	out_ptr += sizeof(uint32_t);
 	pkt_counter++;
 
 	*(uint32_t*) out_ptr = pkt_crc;
 	//CRC->dt = pkt_crc;
 	//pkt_crc = CRC->dt; //
-	pkt_crc = crc_one_word_calculate(SWAP_HALF_WORD(*(uint32_t*) out_ptr));
+	pkt_crc = crc_calc(SWAP_HALF_WORD(*(uint32_t*) out_ptr));
 	out_ptr += sizeof(uint32_t);
 
 	// Decode US Data
@@ -84,7 +94,7 @@ int16_t pkt_pack(uint16_t *in_data, uint16_t *out_data, uint16_t len) {
 		tmp <<= 10;
 		ptr++;
 		tmp |= *(uint16_t*) ptr;
-		pkt_crc = crc_one_word_calculate(SWAP_HALF_WORD(tmp));
+		pkt_crc = crc_calc(SWAP_HALF_WORD(tmp));
 		ptr++;
 		*(uint32_t*) out_ptr = tmp;
 		out_ptr += sizeof(uint32_t);
@@ -96,27 +106,25 @@ int16_t pkt_pack(uint16_t *in_data, uint16_t *out_data, uint16_t len) {
 	return (3/*hdr*/+ len + 1/*crc*/) * 2; // size in uint16_t for send by SPI (16 bit)
 }
 
-extern uint16_t send_buf[4096];
-
 void pkt_send(uint16_t *data, uint16_t len) {	// Data Stream
 	gpio_init_type gpio_param;
 	crm_periph_clock_enable(CRM_GPIOA_PERIPH_CLOCK, TRUE);
 	gpio_default_para_init(&gpio_param);
 	/* spi1 cs pin */
 	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
-	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_MODERATE; //GPIO_DRIVE_STRENGTH_STRONGER;
 	gpio_param.gpio_mode = GPIO_MODE_MUX;
-	gpio_param.gpio_pull = GPIO_PULL_DOWN;
+	gpio_param.gpio_pull = GPIO_PULL_NONE;
 	gpio_param.gpio_pins = GPIO_PINS_4;
 	gpio_init(GPIOA, &gpio_param);
 	gpio_pin_mux_config(GPIOA, GPIO_PINS_SOURCE4, GPIO_MUX_5);
 	/* spi1 sck pin */
-	gpio_param.gpio_pull = GPIO_PULL_DOWN;
+	gpio_param.gpio_pull = GPIO_PULL_NONE;
 	gpio_param.gpio_pins = GPIO_PINS_5;
 	gpio_init(GPIOA, &gpio_param);
 	gpio_pin_mux_config(GPIOA, GPIO_PINS_SOURCE5, GPIO_MUX_5);
 	/* spi1 mosi pin */
-	gpio_param.gpio_pull = GPIO_PULL_UP;
+	gpio_param.gpio_pull = GPIO_PULL_NONE;
 	gpio_param.gpio_pins = GPIO_PINS_7;
 	gpio_init(GPIOA, &gpio_param);
 	gpio_pin_mux_config(GPIOA, GPIO_PINS_SOURCE7, GPIO_MUX_5);
@@ -155,7 +163,7 @@ void pkt_send(uint16_t *data, uint16_t len) {	// Data Stream
 	spi_ti_mode_enable(SPI1, TRUE);
 	spi_enable(SPI1, TRUE);
 
-	//pkt_tx_rdy = 0;
+	dma_flag_clear(DMA1_FDT4_FLAG);
 
 	dma_interrupt_enable(DMA1_CHANNEL4, DMA_FDT_INT, TRUE);
 

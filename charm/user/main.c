@@ -54,20 +54,20 @@ void button_isr(void);
  * @retval none
  */
 void button_exint_init(void) {
-//  exint_init_type exint_init_struct;
-//
-//  crm_periph_clock_enable(CRM_SCFG_PERIPH_CLOCK, TRUE);
-//  scfg_exint_line_config(SCFG_PORT_SOURCE_GPIOA, SCFG_PINS_SOURCE0);
-//
-//  exint_default_para_init(&exint_init_struct);
-//  exint_init_struct.line_enable = TRUE;
-//  exint_init_struct.line_mode = EXINT_LINE_INTERRUPUT;
-//  exint_init_struct.line_select = EXINT_LINE_0;
-//  exint_init_struct.line_polarity = EXINT_TRIGGER_RISING_EDGE;
-//  exint_init(&exint_init_struct);
-//
-//  nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
-//  nvic_irq_enable(EXINT0_IRQn, 0, 0);
+	exint_init_type exint_init_struct;
+
+	crm_periph_clock_enable(CRM_SCFG_PERIPH_CLOCK, TRUE);
+	scfg_exint_line_config(SCFG_PORT_SOURCE_GPIOA, SCFG_PINS_SOURCE0);
+
+	exint_default_para_init(&exint_init_struct);
+	exint_init_struct.line_enable = TRUE;
+	exint_init_struct.line_mode = EXINT_LINE_INTERRUPUT;
+	exint_init_struct.line_select = EXINT_LINE_0;
+	exint_init_struct.line_polarity = EXINT_TRIGGER_RISING_EDGE;
+	exint_init(&exint_init_struct);
+
+	nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
+	nvic_irq_enable(EXINT0_IRQn, 0, 0);
 }
 
 /**
@@ -1171,6 +1171,10 @@ uint32_t crc(uint32_t crcIn, uint32_t data) {
 	uint32_t res = (crcIn << 8) ^ crc_tab_val;
 	return res;
 }
+
+void envolve_timers(void) {
+}
+
 /**
  * @brief  main function.
  * @param  none
@@ -1191,23 +1195,40 @@ int main(void) {
 	crc_reverse_input_data_set(CRC_REVERSE_INPUT_NO_AFFECTE);
 	crc_reverse_output_data_set(CRC_REVERSE_OUTPUT_NO_AFFECTE);
 
-	while (1) {
-		uint16_t env_buf[1024];
-		pkt_envelop((uint16_t*) crc_table, env_buf, 2, 4);
+	uint16_t adc_buf[8192];
 
-		uint16_t pkt_buf[128];
-		uint16_t pkt_len = pkt_pack(env_buf, pkt_buf, 2);
+
+	uint16_t env_buf[8192];
+	uint16_t *env_ptr = env_buf;
+	uint16_t pkt_buf[1024];
+	uint16_t *pkt_ptr = pkt_buf;
+
+	while (1) {
+		pkt_envelop((uint16_t*) crc_table, env_ptr, 200, 4);
+
+		uint16_t pkt_len = pkt_pack(env_ptr, pkt_ptr, 200);
 
 		while (1) {
 			__disable_irq();
 			uint8_t tx_rdy = pkt_tx_rdy;
 			pkt_tx_rdy = 0;
 			__enable_irq();
-			if (tx_rdy)
+			if (tx_rdy) {
+				__asm("NOP");
 				break;
+			}
 		}
-		pkt_send(pkt_buf, pkt_len);
-		crc_init_data_set(0xFFFFFFFF);
+		pkt_send(pkt_ptr, pkt_len);
+
+		if(env_ptr != env_buf)
+			env_ptr = env_buf;
+		else
+			env_ptr = &env_buf[4096];
+
+		if(pkt_ptr != pkt_buf)
+			pkt_ptr = pkt_buf;
+		else
+			pkt_ptr = &pkt_buf[512];
 	}
 
 	init_adc_tmr();
