@@ -556,7 +556,7 @@ void test_spi_ti_send() {	// Data Stream
 volatile int irq_cntr = 0;
 //void EXINT15_10_IRQHandler(void) {
 //	if (exint_flag_get(EXINT_LINE_13) != RESET) {
-//		irq_cntr = 1;
+//		irq_cntr = 1;t
 //		exint_flag_clear(EXINT_LINE_13);
 //	}
 //}
@@ -954,25 +954,25 @@ void pulse_cascade(void) {
 	tmr_counter_enable(TMR5, TRUE);
 }
 
-void EXINT15_10_IRQHandler(void) {
-	if (exint_flag_get(EXINT_LINE_13) != RESET) {
-		if (irq_cntr == 0) {
-			pulse_pin = 0;
-			//tmr_counter_value_set(TMR2, 0);
-			//tmr_counter_value_set(TMR4, 0);
-
-			tmr_counter_enable(TMR4, TRUE);
-
-			tmr_counter_enable(TMR2, TRUE);
-
-			//nn = 0;
-			tmr_counter_enable(TMR1, TRUE);
-		}
-
-		irq_cntr = 1;
-		exint_flag_clear(EXINT_LINE_13);
-	}
-}
+//void EXINT15_10_IRQHandler(void) {
+//	if (exint_flag_get(EXINT_LINE_13) != RESET) {
+//		if (irq_cntr == 0) {
+//			pulse_pin = 0;
+//			//tmr_counter_value_set(TMR2, 0);
+//			//tmr_counter_value_set(TMR4, 0);
+//
+//			tmr_counter_enable(TMR4, TRUE);
+//
+//			tmr_counter_enable(TMR2, TRUE);
+//
+//			//nn = 0;
+//			tmr_counter_enable(TMR1, TRUE);
+//		}
+//
+//		irq_cntr = 1;
+//		exint_flag_clear(EXINT_LINE_13);
+//	}
+//}
 
 void ext_int(void) {
 	crm_periph_clock_enable(CRM_GPIOB_PERIPH_CLOCK, TRUE);
@@ -1175,6 +1175,8 @@ uint32_t crc(uint32_t crcIn, uint32_t data) {
 void envolve_timers(void) {
 }
 
+void sync_test(void);
+
 /**
  * @brief  main function.
  * @param  none
@@ -1186,6 +1188,14 @@ int main(void) {
 	at32_board_init();
 
 	button_exint_init();
+
+	init_pulse_pio();
+	init_pulse_tmr();
+
+	//init_adc_dma();
+	init_adc_tmr();
+
+	sync_test();
 
 	crm_periph_clock_enable(CRM_CRC_PERIPH_CLOCK, TRUE);
 	crc_data_reset();
