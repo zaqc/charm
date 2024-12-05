@@ -21,9 +21,18 @@ uint16_t vrc_max_len = 200;
  *			Timer8 - 1 MHz with IRQ
  */
 void vrc_init(void) {
-	crm_periph_clock_enable(CRM_GPIOD_PERIPH_CLOCK, TRUE);
+	crm_periph_clock_enable(CRM_GPIOA_PERIPH_CLOCK, TRUE);
 	gpio_init_type gpio_param;
 	gpio_default_para_init(&gpio_param);
+	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
+	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_MODERATE;
+	gpio_param.gpio_mode = GPIO_MODE_MUX;
+	gpio_param.gpio_pull = GPIO_PULL_NONE;
+	gpio_param.gpio_pins = GPIO_PINS_0;
+	gpio_init(GPIOA, &gpio_param);
+	gpio_pin_mux_config(GPIOD, GPIO_PINS_SOURCE0, GPIO_MUX_3);	// TMR8_EXT
+
+	crm_periph_clock_enable(CRM_GPIOD_PERIPH_CLOCK, TRUE);
 	gpio_param.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
 	gpio_param.gpio_drive_strength = GPIO_DRIVE_STRENGTH_STRONGER;
 	gpio_param.gpio_mode = GPIO_MODE_OUTPUT;
@@ -100,7 +109,7 @@ void vrc_init(void) {
 	nvic_irq_enable(TMR8_OVF_TMR13_IRQn, 1, 0);
 
 	tmr_sub_mode_select(TMR8, TMR_SUB_TRIGGER_MODE);
-	tmr_trigger_input_select(TMR8, TMR_SUB_INPUT_SEL_IS0);	// IS0 - TMR8 start by TMR1
+	tmr_trigger_input_select(TMR8, TMR_SUB_INPUT_SEL_EXTIN);	// Sync by TMR8_EXT (PA0)
 
 	tmr_counter_enable(TMR8, TRUE);
 }

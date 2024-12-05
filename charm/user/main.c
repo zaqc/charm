@@ -1185,15 +1185,19 @@ void sync_test(void);
 int main(void) {
 	system_clock_config();
 
-	at32_board_init();
+	delay_init();
 
-	button_exint_init();
+	//at32_board_init();
+
+	//button_exint_init();
 
 	init_pulse_pio();
 	init_pulse_tmr();
 
 	//init_adc_dma();
 	init_adc_tmr();
+
+	vrc_init();
 
 	sync_test();
 
