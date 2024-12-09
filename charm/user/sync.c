@@ -8,15 +8,13 @@
 #include "at32f435_437_board.h"
 #include "at32f435_437_clock.h"
 
+#include "global_param.h"
 #include "pulse.h"
+#include "adc.h"
 
-extern volatile uint8_t adc_dma_rdy;
+volatile uint8_t adc_dma_busy = 0;
+volatile int32_t sync_overrun = 0;
 
-#define ADC_BUF_SIZE	(1024 * 16)
-extern uint32_t adc_buf[ADC_BUF_SIZE];
-extern uint32_t *adc_buf_ptr;
-
-volatile uint8_t one_time_int = 0;
 /**
  * @brief	IRQ Handler
  * 			IRQ from PORT_E_13
@@ -26,30 +24,21 @@ volatile uint8_t one_time_int = 0;
  */
 void EXINT15_10_IRQHandler(void) {
 	if (exint_flag_get(EXINT_LINE_13) == SET) {
-		//EXINT->intsts = EXINT_LINE_13;
 		exint_flag_clear(EXINT_LINE_13);
 
-		//if (one_time_int == 0) {
+		__disable_irq();
+		uint8_t busy = adc_dma_busy;
+		if(0 != adc_dma_busy)
+			sync_overrun++;
+		__enable_irq();
 
-			one_time_int = 1;
-
-			__disable_irq();
-			uint8_t adc_rdy = adc_dma_rdy;
-			adc_dma_rdy = 0;
-			__enable_irq();
-
-			//if (adc_rdy) {
+		if (0 == busy) {
 			GPIOE->clr = GPIO_PINS_1;	// Clear Sync Pin
 
 			TMR3->cval = 0;
 
 			TMR2->cval = 0;
 			TMR5->cval = 0;
-
-			if (adc_buf_ptr != adc_buf)
-				adc_buf_ptr = adc_buf;
-			else
-				adc_buf_ptr = &adc_buf[4096];
 
 			DMA2_CHANNEL4->ctrl_bit.chen = 0;
 			DMA2_CHANNEL4->ctrl = 0;
@@ -64,7 +53,12 @@ void EXINT15_10_IRQHandler(void) {
 
 			DMA2_CHANNEL4->dtcnt_bit.cnt = 4096;
 			DMA2_CHANNEL4->paddr = (uint32_t) &GPIOF->idt;
-			DMA2_CHANNEL4->maddr = (uint32_t) adc_buf;
+			DMA2_CHANNEL4->maddr = (uint32_t) adc_put_ptr;
+
+			if(adc_put_ptr != adc_buf)
+				adc_put_ptr = adc_buf;
+			else
+				adc_put_ptr = &adc_buf[ADC_SLOT_SIZE];
 
 			DMA2_CHANNEL4->ctrl |= DMA_FDT_INT;
 
@@ -76,9 +70,12 @@ void EXINT15_10_IRQHandler(void) {
 
 			TMR4->iden |= TMR_OVERFLOW_DMA_REQUEST;
 
+			__disable_irq();
+			adc_dma_busy = 1;
+			__enable_irq();
+
 			GPIOE->scr = GPIO_PINS_1;	// Set Sync Pin (run all timers and DMA)
-			//}
-		//}
+		}
 	}
 }
 
@@ -134,7 +131,10 @@ void init_sync_pin(void) {
 volatile uint8_t send_sync_flag = 0;
 void TMR1_OVF_TMR10_IRQHandler(void) {
 	tmr_flag_clear(TMR1, TMR_OVF_FLAG);
-	send_sync_flag = 1;
+
+	GPIOB->clr = GPIO_PINS_9;
+	delay_us(1);
+	GPIOB->scr = GPIO_PINS_9;
 }
 
 /**
@@ -158,8 +158,6 @@ void sync_test(void) {
 
 	GPIOB->scr = GPIO_PINS_9;
 
-	init_sync_pin();
-
 	/* configure TMR1 for generate 1 KHz event */
 	crm_periph_clock_enable(CRM_TMR1_PERIPH_CLOCK, TRUE);
 
@@ -174,19 +172,19 @@ void sync_test(void) {
 	tmr_counter_enable(TMR1, TRUE);
 
 	while (1) {
-		__disable_irq();
-		uint8_t flag = send_sync_flag;
-		send_sync_flag = 0;
-		__enable_irq();
-		if (flag) {
-			__disable_irq();
-			one_time_int = 0;
-			__enable_irq();
-			GPIOB->clr = GPIO_PINS_9;
-			delay_us(1);
-			GPIOB->scr = GPIO_PINS_9;
-		}
-
+//		__disable_irq();
+//		uint8_t flag = send_sync_flag;
+//		send_sync_flag = 0;
+//		__enable_irq();
+//		if (flag) {
+//			__disable_irq();
+//			one_time_int = 0;
+//			__enable_irq();
+//			GPIOB->clr = GPIO_PINS_9;
+//			delay_us(1);
+//			GPIOB->scr = GPIO_PINS_9;
+//		}
+//
 		__asm("NOP");
 	}
 }

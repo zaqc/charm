@@ -1172,10 +1172,81 @@ uint32_t crc(uint32_t crcIn, uint32_t data) {
 	return res;
 }
 
-void envolve_timers(void) {
+typedef struct {
+	uint16_t len;
+	uint16_t *ptr;
+} tx_pkt_struct;
+
+void main_loop(void) {
+
+	uint8_t data_prep_blk_cntr = 0;
+
+	uint16_t env_data[ADC_SLOT_SIZE];
+
+	uint16_t send_data[ADC_SLOT_SIZE * 2];
+
+	tx_pkt_struct tx_pkt[2];
+	tx_pkt[0].ptr = send_data;
+	tx_pkt[0].len = 0;
+	tx_pkt[1].ptr = &send_data[ADC_SLOT_SIZE];
+	tx_pkt[1].len = 0;
+
+	tx_pkt_struct *put_tx_pkt = tx_pkt;
+	tx_pkt_struct *get_tx_pkt = tx_pkt;
+
+	uint8_t wait_for_send = 0;
+
+	while(1) {
+		__disable_irq();
+		uint8_t adc_dma_rdy = adc_dma_done_cntr;
+		__enable_irq();
+
+		if(0 != adc_dma_rdy && wait_for_send < 2) {
+			pkt_envelop(adc_get_ptr, env_data, 1024, 4);
+
+			if(adc_get_ptr != adc_buf)
+				adc_get_ptr = adc_buf;
+			else
+				adc_get_ptr = &adc_buf[ADC_SLOT_SIZE];
+
+			__disable_irq();
+			--adc_dma_done_cntr;
+			__enable_irq();
+
+			put_tx_pkt->len = pkt_pack(env_data, put_tx_pkt->ptr, 1024);
+			if(put_tx_pkt != tx_pkt)
+				put_tx_pkt = tx_pkt;
+			else
+				put_tx_pkt = &tx_pkt[1];
+
+			++wait_for_send;
+		}
+
+		__disable_irq();
+		uint8_t tx_rdy = spi_tx_rdy;
+		__enable_irq();
+
+		if (0 != tx_rdy && 0 != wait_for_send) {
+
+			__disable_irq();
+			spi_tx_rdy = 0;
+			__enable_irq();
+
+			pkt_send(get_tx_pkt->ptr, get_tx_pkt->len);
+
+			if(get_tx_pkt != tx_pkt)
+				get_tx_pkt = tx_pkt;
+			else
+				get_tx_pkt = &tx_pkt[1];
+
+			--wait_for_send;
+		}
+	}
 }
 
 void sync_test(void);
+void init_sync_pin(void);
+void vrc_init(void);
 
 /**
  * @brief  main function.
@@ -1187,17 +1258,17 @@ int main(void) {
 
 	delay_init();
 
-	//at32_board_init();
-
-	//button_exint_init();
+	crm_periph_clock_enable(CRM_CRC_PERIPH_CLOCK, TRUE);
 
 	init_pulse_pio();
 	init_pulse_tmr();
 
 	//init_adc_dma();
-	init_adc_tmr();
+	init_adc_tmr4_dma2ch4();
 
 	vrc_init();
+
+	init_sync_pin();
 
 	sync_test();
 
@@ -1223,14 +1294,7 @@ int main(void) {
 		uint16_t pkt_len = pkt_pack(env_ptr, pkt_ptr, 200);
 
 		while (1) {
-			__disable_irq();
-			uint8_t tx_rdy = pkt_tx_rdy;
-			pkt_tx_rdy = 0;
-			__enable_irq();
-			if (tx_rdy) {
-				__asm("NOP");
-				break;
-			}
+			__asm("NOP");
 		}
 		pkt_send(pkt_ptr, pkt_len);
 
@@ -1245,8 +1309,8 @@ int main(void) {
 			pkt_ptr = &pkt_buf[512];
 	}
 
-	init_adc_tmr();
-	init_adc_dma();
+	//init_adc_tmr();
+	//init_adc_dma();
 
 	init_pulse_pio();
 	init_pulse_tmr();
@@ -1277,8 +1341,8 @@ int main(void) {
 
 	pulse_cascade();
 
-	init_adc_tmr();
-	init_adc_dma();
+	//init_adc_tmr();
+	//init_adc_dma();
 
 	ext_int();
 
